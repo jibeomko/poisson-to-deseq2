@@ -1,12 +1,12 @@
-# 06 · Which genes is padj adjusted over, and how do you test "down under starvation, back up once glucose returns"?
+# 06 - Multiple testing: what padj is adjusted over, and testing a rescue
 #
-# Reproduces the numbers in notes/06_multiple_testing.md (Korean), which explains
-# each step. Run from the repository root:
+# The numbers from notes/06_multiple_testing.md, without the explanations
+# (those are in the note, in Korean). Run it from the repo root:
 #
 #     Rscript 06_multiple_testing.R
 #
-# The stopifnot() checks compare against the values printed in the note
-# (R 4.5.2, DESeq2 1.50.2).
+# Each stopifnot() checks a result against the value printed in the note.
+# I ran it with R 4.5.2 and DESeq2 1.50.2.
 
 suppressPackageStartupMessages(suppressWarnings(library(DESeq2)))
 options(width = 110)

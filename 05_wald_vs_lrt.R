@@ -1,12 +1,12 @@
-# 05 · Why can the same fold change get different p-values, and what does the LRT test instead?
+# 05 - Wald test and LRT: same fold change, different p-values
 #
-# Reproduces the numbers in notes/05_wald_vs_lrt.md (Korean), which explains
-# each step. Run from the repository root:
+# The numbers from notes/05_wald_vs_lrt.md, without the explanations
+# (those are in the note, in Korean). Run it from the repo root:
 #
 #     Rscript 05_wald_vs_lrt.R
 #
-# The stopifnot() checks compare against the values printed in the note
-# (R 4.5.2, DESeq2 1.50.2).
+# Each stopifnot() checks a result against the value printed in the note.
+# I ran it with R 4.5.2 and DESeq2 1.50.2.
 
 suppressPackageStartupMessages(suppressWarnings(library(DESeq2)))
 options(width = 110)

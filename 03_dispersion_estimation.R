@@ -1,12 +1,12 @@
-# 03 · How is the dispersion alpha estimated from three replicates?
+# 03 - Estimating the dispersion from three replicates
 #
-# Reproduces the numbers in notes/03_dispersion_estimation.md (Korean), which
-# explains each step. Run from the repository root:
+# The numbers from notes/03_dispersion_estimation.md, without the explanations
+# (those are in the note, in Korean). Run it from the repo root:
 #
 #     Rscript 03_dispersion_estimation.R
 #
-# The stopifnot() checks compare against the values printed in the note
-# (R 4.5.2, DESeq2 1.50.2).
+# Each stopifnot() checks a result against the value printed in the note.
+# I ran it with R 4.5.2 and DESeq2 1.50.2.
 
 suppressPackageStartupMessages(suppressWarnings(library(DESeq2)))
 section <- function(title) cat("\n==", title, "==\n")

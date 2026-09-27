@@ -1,22 +1,16 @@
 # 07. 적은 count에서 나온 큰 fold change를 믿어도 될까? LFC shrinkage와 결과표 점검
 
-> 결과표를 받은 뒤 할 일 세 가지: 불안정한 LFC를 0 쪽으로 당겨 보고, NA의 원인을 가리고, QC 그림을 검정과 따로 읽는다.
-> 교재: 13장 · 먼저 읽으면 좋은 노트: [03. dispersion 추정](03_dispersion_estimation.md), [05. Wald와 LRT](05_wald_vs_lrt.md), [06. 다중검정](06_multiple_testing.md) · 검증: R 4.5.2, DESeq2 1.50.2
+count가 한 자릿수인 유전자가 50배 넘는 fold change를 보이면, 그 숫자를 그대로 믿어도 될지 망설여지죠. 이 노트에서는 그런 LFC를 `lfcShrink()`로 0 쪽으로 당겨 보고, 결과표의 NA가 어디서 오는지 가려내고, QC 그림을 검정과 따로 읽어 봐요. [03](03_dispersion_estimation.md)의 dispersion shrinkage, [05](05_wald_vs_lrt.md)의 Wald 검정, [06](06_multiple_testing.md)의 padj를 먼저 보고 오면 수월해요.
 
-## 이 노트에서 다루는 것
-
-- read가 몇 개 안 되는 유전자에서 LFC가 왜 크게 튀는지, `lfcShrink()`가 그 값을 어떻게 0 쪽으로 당기는지
-- shrink한 뒤에도 p 값은 그대로라는 것, 그리고 `lfcSE`라는 같은 열 이름이 함수마다 다른 뜻이라는 것
-- 결과표의 NA가 어디서 생기는지, 특히 한 sample만 튀는 count outlier를 DESeq2가 언제 걸러 내는지
-- VST, PCA 같은 QC 그림이 검정과 어떻게 다른 일을 하는지
+> 교재 13장
 
 ## 1. 3개 대 3개에서 56배 차이, 믿어도 될까?
 
-공통 예제인 유전자 A부터 보자. count(한 sample에서 그 유전자에 배정된 read 수)는 Ctrl에서 100, 130, 90, Starvation에서 200, 250, 180이다. DESeq2가 준 log2 fold change(LFC)는 0.977이다. LFC는 두 조건 평균 비의 log2라서, 0.977은 약 1.97배 늘었다는 뜻이다.
+공통 예제인 유전자 A부터 볼게요. count(한 sample에서 그 유전자에 배정된 read 수)는 Ctrl에서 100, 130, 90, Starvation에서 200, 250, 180이에요. DESeq2가 준 log2 fold change(LFC)는 0.977인데, LFC는 두 조건 평균 비의 log2라서 약 1.97배 늘었다는 뜻이에요.
 
-이 추정치의 SE(표준오차)는 0.289다. SE는 같은 실험을 반복하면 추정치가 얼마나 흔들릴지를 나타낸다. 추정치 ± 1.96 × SE로 만든 95% 구간은 [0.41, 1.54]이고, 배수로 바꾸면 1.3배에서 2.9배 사이다. count가 수백 개라 추정이 꽤 단단하다.
+이 추정치의 SE(표준오차)는 0.289예요. SE는 같은 실험을 반복했을 때 추정치가 얼마나 흔들릴지를 나타내요. 추정치 ± 1.96 × SE로 95% 구간을 만들면 [0.41, 1.54]이고, 배수로 바꾸면 1.3배에서 2.9배 사이예요. count가 수백 개라 추정이 꽤 단단하죠.
 
-이번에는 count가 훨씬 적은 유전자를 보자. DESeq2에 들어 있는 모의 데이터 생성 함수로 유전자 3000개, 조건 A 3개 vs B 3개인 데이터를 만들고, 그중 gene1349를 골랐다.
+이번에는 count가 훨씬 적은 유전자를 볼게요. DESeq2에 들어 있는 모의 데이터 생성 함수로 유전자 3000개, 조건 A 3개 vs B 3개인 데이터를 만들고, 그중 gene1349를 골랐어요.
 
 ```r
 suppressPackageStartupMessages(library(DESeq2)); options(width = 110)
@@ -43,54 +37,53 @@ gene1349    4.886         -5.808 1.699 0.0006278 0.008435
 genes with LFC: 2984 | share with |LFC| < 1: 0.539
 ```
 
-A에서는 10, 9, 11이고 B에서는 0, 0, 0이다. DESeq2는 LFC −5.81을 내놓는다. B가 A보다 56배 낮다는 뜻이다. p = 0.00063이고, padj(여러 유전자를 함께 검정한 것을 보정한 p 값, [06](06_multiple_testing.md))도 0.0084라서 유의하다. 그런데 SE가 1.70이다. 95% 구간은 [−9.14, −2.48]이고, 배수로는 약 5.6배 감소부터 약 560배 감소까지다.
+A에서는 10, 9, 11인데 B에서는 0, 0, 0이에요. DESeq2는 LFC −5.81, 즉 B가 A보다 56배 낮다고 내놓아요. p = 0.00063이고 padj(여러 유전자를 함께 검정한 것을 보정한 p 값, [06](06_multiple_testing.md))도 0.0084라서 유의해요. 그런데 SE가 1.70이나 돼요. 95% 구간은 [−9.14, −2.48]이고, 배수로 바꾸면 약 5.6배 감소부터 약 560배 감소까지예요.
 
-데이터가 실제로 말해 주는 것은 "B가 A보다 훨씬 적다" 정도다. B의 세 sample이 모두 0이면 B의 평균이 0.1이든 0.01이든 비슷하게 그럴듯하다. 그런데 LFC는 바로 그 차이를 숫자로 적어야 한다.
+사실 이 데이터가 말해 주는 건 "B가 A보다 훨씬 적다" 정도예요. B의 세 sample이 모두 0이면 B의 평균이 0.1이든 0.01이든 비슷하게 그럴듯하거든요. 그런데 LFC는 바로 그 차이를 숫자 하나로 적어야 해요.
 
-MLE로 보면 사정이 더 분명하다. likelihood(가능도)는 관측값을 고정해 두고, parameter 후보가 그 관측값을 얼마나 그럴듯하게 만드는지 나타내는 값이다. MLE(최대가능도추정)는 likelihood가 가장 큰 parameter 값이다([03](03_dispersion_estimation.md)에서 자세히 다뤘다). B가 모두 0이면 LFC를 더 음수로 보낼수록 likelihood가 계속 커진다. 그래서 유한한 MLE가 없다. −5.81은 DESeq2가 계수를 계산할 때 기대 count(모형이 그 sample에서 예상하는 평균 count)에 0.5라는 하한(`minmu`)을 두어서 멈춘 자리다. 하한을 0.1로 낮추면 −8.13, 0.01로 낮추면 −11.45가 된다(아래 "더 깊이 보기"의 "한 그룹이 모두 0일 때").
+MLE로 보면 사정이 더 분명해져요. likelihood(가능도)는 관측값을 고정해 두고, parameter 후보가 그 관측값을 얼마나 그럴듯하게 만드는지 나타내는 값이에요. MLE(최대가능도추정)는 likelihood가 가장 큰 parameter 값이고요([03](03_dispersion_estimation.md)에서 자세히 다뤘어요). B가 모두 0이면 LFC를 음수 쪽으로 보낼수록 likelihood가 계속 커져서 유한한 MLE가 없어요. −5.81은 DESeq2가 계수를 계산할 때 기대 count(모형이 그 sample에서 예상하는 평균 count)에 0.5라는 하한(`minmu`)을 둬서 멈춘 자리일 뿐이에요. 하한을 0.1로 낮추면 −8.13, 0.01로 낮추면 −11.45가 돼요(더 깊이 보기의 "한 그룹이 모두 0일 때").
 
-한 그룹이 모두 0인 경우만 문제인 것은 아니다. count가 적으면 우연한 흔들림이 비율에 크게 반영된다. 평균이 10인 Poisson count의 표준편차는 약 3.2로 평균의 30% 정도다. 평균이 1000이면 표준편차는 약 32로 평균의 3%다([01](01_poisson_simulation.md)). 위 출력의 뒷부분이 이 모의 데이터 전체의 모습이다. baseMean은 유전자마다 여섯 sample의 정규화 count를 평균한 값이다. 정규화 count는 count를 size factor로 나눈 값이고, size factor는 sample마다 sequencing 깊이가 다른 것을 맞추는 배율이다. baseMean이 5보다 작으면서 |LFC| > 3, SE > 1인 유전자가 81개 있고, 그중 한 그룹이 모두 0인 것은 38개다.
+한 그룹이 모두 0인 경우만 문제인 것도 아니에요. count가 적으면 우연한 흔들림이 비율에 크게 반영되거든요. 예를 들어 평균이 10인 Poisson count의 표준편차는 약 3.2로 평균의 30% 정도지만, 평균이 1000이면 표준편차는 약 32로 평균의 3%예요([01](01_poisson_simulation.md)).
 
-## 2. lfcShrink는 LFC를 어떻게 0 쪽으로 당기나?
+위 출력의 뒷부분은 모의 데이터 전체의 모습이에요. baseMean은 유전자마다 여섯 sample의 정규화 count를 평균한 값이에요. 정규화 count는 count를 size factor로 나눈 값이고, size factor는 sample마다 다른 sequencing 깊이를 맞추는 배율이에요. baseMean이 5보다 작으면서 |LFC| > 3, SE > 1인 유전자가 81개였고, 그중 38개는 한 그룹이 모두 0이었어요.
 
-1절 출력의 마지막 줄을 보자. LFC가 계산된 유전자 2984개 중 54%는 |LFC|가 1보다 작다. 절반 넘는 유전자가 2배 넘게 변하지 않는다는 뜻이다. 그렇다면 정보가 적은 유전자의 극단적인 LFC는 "전체 경향" 쪽으로 당겨서 읽는 편이 낫다. 정보가 많은 유전자는 그대로 두면 된다. 정보가 적은 추정치를 전체 경향 쪽으로 당기는 일을 shrinkage(수축)라고 한다.
+## 2. lfcShrink는 LFC를 어떻게 0 쪽으로 당길까?
 
-전체 경향은 prior(사전분포)로 표현한다. prior는 데이터를 보기 전에 parameter가 어디쯤 있을지에 대한 분포다. `lfcShrink(type = "normal")`은 LFC의 prior를 0을 중심으로 한 정규분포 N(0, σ²)로 둔다. σ²는 DESeq2가 전체 유전자의 MLE LFC 분포에서 정한다. 이렇게 prior를 데이터 전체에서 추정하는 방식을 empirical Bayes라고 한다. `type = "normal"`이 돌려주는 값은 likelihood와 prior를 함께 고려했을 때 가장 그럴듯한 값, 즉 MAP(사후최빈값)다.
+1절 출력의 마지막 줄을 보면, LFC가 계산된 유전자 2984개 중 54%는 |LFC|가 1보다 작아요. 절반 넘는 유전자가 2배도 변하지 않는다는 뜻이죠. 그렇다면 정보가 적은 유전자의 극단적인 LFC는 이 "전체 경향" 쪽으로 당겨서 읽고, 정보가 많은 유전자는 그대로 두는 편이 나아요. 이렇게 정보가 적은 추정치를 전체 경향 쪽으로 당기는 일을 shrinkage(수축)라고 해요.
 
-dispersion에도 비슷한 shrinkage가 있었다([03](03_dispersion_estimation.md)). dispersion α는 분산 = μ + αμ²에서 Poisson보다 더 퍼지는 정도를 나타내는 값이다([02](02_negative_binomial.md)). 두 shrinkage는 당기는 방향과 쓰이는 곳이 다르다.
+전체 경향은 prior(사전분포)로 표현해요. prior는 데이터를 보기 전에 parameter가 어디쯤 있을지에 대한 분포예요. `lfcShrink(type = "normal")`은 LFC의 prior를 0을 중심으로 한 정규분포 N(0, σ²)로 두고, σ²는 전체 유전자의 MLE LFC 분포에서 정해요. 이렇게 prior를 데이터 전체에서 추정하는 방식을 empirical Bayes라고 불러요. `type = "normal"`이 돌려주는 값은 likelihood와 prior를 함께 고려했을 때 가장 그럴듯한 값, 즉 MAP(사후최빈값)예요.
+
+dispersion에도 비슷한 shrinkage가 있었죠([03](03_dispersion_estimation.md)). dispersion α는 분산 = μ + αμ²에서 Poisson보다 더 퍼지는 정도를 나타내는 값이에요([02](02_negative_binomial.md)). 두 shrinkage는 당기는 방향과 쓰이는 곳이 달라요.
 
 | | dispersion shrinkage | LFC shrinkage |
 |---|---|---|
 | 무엇을 당기나 | dispersion α | LFC |
-| 어디로 당기나 (prior 중심) | trend: 평균 발현량에 따라 dispersion이 대체로 어디쯤 있는지 나타내는 곡선 (0이 아니다) | 0 (normal, apeglm) 또는 0 근처 mixture (ashr) |
-| 왜 하나 | 유전자별 dispersion 추정의 불안정을 줄인다 | 저발현·고분산 유전자의 잡음 섞인 효과 크기를 줄인다 |
-| 언제 하나 | `DESeq()` 안에서 자동 (`estimateDispersionsMAP`) | `DESeq()`가 끝난 뒤 `lfcShrink()`를 따로 부른다 |
-| 결과가 가는 곳 | 이후 GLM 적합과 검정 전체 (검정의 SE에 반영된다) | 효과 크기의 순위, 그림, 보고. 기본 호출에서는 `log2FoldChange`와 `lfcSE` 두 열만 바뀐다 |
+| 어디로 당기나 (prior 중심) | trend: 평균 발현량에 따라 dispersion이 대체로 어디쯤 있는지 나타내는 곡선 (0이 아님) | 0 (normal, apeglm) 또는 0 근처 mixture (ashr) |
+| 왜 하나 | 유전자별 dispersion 추정의 불안정을 줄이려고 | 저발현·고분산 유전자의 잡음 섞인 효과 크기를 줄이려고 |
+| 언제 하나 | `DESeq()` 안에서 자동 (`estimateDispersionsMAP`) | `DESeq()`가 끝난 뒤 `lfcShrink()`를 따로 호출 |
+| 결과가 가는 곳 | 이후 GLM 적합과 검정 전체 (검정의 SE에 반영) | 효과 크기의 순위, 그림, 보고. 기본 호출에서는 `log2FoldChange`와 `lfcSE` 두 열만 바뀜 |
 
-표의 GLM(일반화 선형모형)은 count의 평균을 log 척도에서 조건·batch 등의 합으로 표현하는 모형이다([04](04_glm_condition_batch.md)).
+표의 GLM(일반화 선형모형)은 count의 평균을 log 척도에서 조건·batch 등의 합으로 표현하는 모형이에요([04](04_glm_condition_batch.md)).
 
-`type = "normal"`이 최대화하는 식은 다음과 같다.
+`type = "normal"`이 최대화하는 식은 이렇게 생겼어요.
 
 $$
 \ell(\beta) - \frac{\beta^2}{2\sigma^2}
 $$
 
-- β: 찾으려는 LFC(log2 단위).
-- ℓ(β): β가 이 유전자의 count를 얼마나 잘 설명하는지를 나타내는 log likelihood. MLE는 이것만 최대화한 값이다.
-- β²/(2σ²): β가 0에서 멀어질수록 커지는 벌점. σ²가 작을수록 벌점이 세다.
+β는 찾으려는 LFC(log2 단위)이고, ℓ(β)는 β가 이 유전자의 count를 얼마나 잘 설명하는지 나타내는 log likelihood예요. MLE는 ℓ(β)만 최대화한 값이죠. 뒤의 β²/(2σ²)는 β가 0에서 멀어질수록 커지는 벌점이고, σ²가 작을수록 세져요.
 
-count가 많은 유전자는 ℓ(β)가 MLE 근처에서 뾰족하다. MLE에서 조금만 벗어나도 likelihood가 크게 떨어지므로 벌점이 β를 거의 움직이지 못한다. count가 적은 유전자는 ℓ(β)가 평평하다. 여러 β가 비슷하게 그럴듯하므로 벌점 쪽이 이겨서 0 쪽으로 크게 끌려간다.
+count가 많은 유전자는 ℓ(β)가 MLE 근처에서 뾰족해요. MLE에서 조금만 벗어나도 likelihood가 크게 떨어지니까 벌점이 β를 거의 움직이지 못해요. 반대로 count가 적은 유전자는 ℓ(β)가 평평해서 여러 β가 비슷하게 그럴듯하고, 그래서 벌점 쪽이 이겨 0 쪽으로 크게 끌려가요.
 
-likelihood를 정규분포로 근사하면 이 효과를 한 줄로 쓸 수 있다.
+likelihood를 정규분포로 근사하면 이 효과를 식 한 줄로 쓸 수 있어요.
 
 $$
 \hat\beta_{\text{shrunken}} \approx \hat\beta_{\text{MLE}} \times \frac{\sigma^2}{\sigma^2 + \text{SE}^2}
 $$
 
-- β̂_MLE와 SE: `results()`가 준 LFC와 그 표준오차.
-- σ²/(σ² + SE²): 0과 1 사이의 배율. SE가 σ보다 훨씬 작으면 1에 가깝고, SE가 크면 0에 가깝다.
+β̂_MLE와 SE는 `results()`가 준 LFC와 그 표준오차예요. σ²/(σ² + SE²)는 0과 1 사이의 배율인데, SE가 σ보다 훨씬 작으면 1에 가깝고 SE가 크면 0에 가까워져요.
 
-이 식은 이해를 돕는 근사다. DESeq2는 이 식을 쓰지 않는다. 벌점을 붙인 IRLS(계수를 찾는 반복 가중 최소제곱 계산, ridge-penalized IRLS)로 MAP를 직접 찾는다. 위 모의 데이터에서 DESeq2가 정한 σ²는 1.591이었다. 같은 σ²를 빌려 와 유전자 A에 대입해 보자. SE² = 0.289² = 0.0836이므로 배율은 1.591 / (1.591 + 0.0836) = 0.950이다. 0.977 × 0.950 = 0.928이 된다. DESeq2로 직접 계산해도 같다. 아래 코드에서 `betaPriorVar`의 첫 값 1e6은 절편(Intercept)에는 사실상 prior를 두지 않는다는 뜻이다.
+이 식은 이해를 돕는 근사일 뿐이고, DESeq2는 벌점을 붙인 IRLS(계수를 찾는 반복 가중 최소제곱 계산, ridge-penalized IRLS)로 MAP를 직접 찾아요. 위 모의 데이터에서 DESeq2가 정한 σ² = 1.591을 빌려 와 유전자 A에 대입해 볼게요. SE² = 0.289² = 0.0836이므로 배율은 1.591 / (1.591 + 0.0836) = 0.950이고, 0.977 × 0.950 = 0.928이 돼요. DESeq2로 직접 계산해도 같은 값이 나와요. 아래 코드에서 `betaPriorVar`의 첫 값 1e6은 절편(Intercept)에는 사실상 prior를 두지 않는다는 뜻이에요.
 
 ```r
 suppressPackageStartupMessages(library(DESeq2))
@@ -115,7 +108,7 @@ MAP  LFC 0.928519  (prior N(0, 1.591))
 근사 s2/(s2+SE^2) = 0.9501  ->  0.9285
 ```
 
-유전자 A는 0.977에서 0.929로 조금만 줄었다(약 1.97배 → 1.90배). 1절의 gene1349에도 같은 계산을 해 보자(1절 코드에 이어서 실행).
+유전자 A는 0.977에서 0.929로 조금만 줄었어요(약 1.97배 → 1.90배). 1절의 gene1349에도 같은 계산을 해 볼게요(1절 코드에 이어서 실행).
 
 ```r
 shr <- lfcShrink(dds, coef = "condition_B_vs_A", type = "normal", quiet = TRUE)
@@ -135,13 +128,13 @@ gene2613    3.950  5.457 3.754  0.101  0.554    0.352
 gene2055 1205.552  2.063 0.313  0.942  1.943    1.943
 ```
 
-`factor` 열이 배율이고 `approx`가 근사식의 값, `shrunken`이 DESeq2의 값이다. gene1349는 배율이 0.355라서 −5.81이 −1.97(약 3.9배 감소)로 크게 줄었다. SE가 3.75인 gene2613은 5.46에서 0.35까지 눌렸다. count가 1000을 넘는 gene2055는 2.06에서 1.94로 거의 그대로다. 근사식은 정보가 많은 유전자에서는 거의 정확하고, 정보가 적은 유전자에서는 방향과 대략의 크기만 맞춘다.
+`factor` 열이 배율, `approx`가 근사식의 값, `shrunken`이 DESeq2가 준 값이에요. gene1349는 배율이 0.355라서 −5.81이 −1.97(약 3.9배 감소)로 크게 줄었어요. SE가 3.75인 gene2613은 5.46에서 0.35까지 눌렸고, count가 1000을 넘는 gene2055는 2.06에서 1.94로 거의 그대로예요. 근사식은 정보가 많은 유전자에서는 거의 정확하고, 정보가 적은 유전자에서는 방향과 대략의 크기만 맞춰요.
 
-MA plot은 x축에 평균 count, y축에 LFC를 찍은 그림이다. shrink 전후를 나란히 놓으면 이 효과가 한눈에 보인다.
+MA plot은 x축에 평균 count, y축에 LFC를 찍은 그림이에요. shrink 전후를 나란히 놓으면 이 효과가 한눈에 보여요.
 
 ![MA plot before and after LFC shrinkage](../figures/07_ma_before_after_shrink.png)
 
-왼쪽은 `results()`의 MLE, 오른쪽은 `lfcShrink(type = "normal")`의 값이다. 평균 count가 작은 왼쪽 끝에서 넓게 퍼져 있던 점들이 오른쪽에서는 0 근처로 모이고, 평균이 큰 쪽은 거의 그대로다.
+왼쪽은 `results()`의 MLE, 오른쪽은 `lfcShrink(type = "normal")`의 값이에요. 평균 count가 작은 왼쪽 끝에서 넓게 퍼져 있던 점들이 오른쪽에서는 0 근처로 모이고, 평균이 큰 쪽은 거의 그대로죠.
 
 <details>
 <summary>그림을 만든 코드</summary>
@@ -183,9 +176,9 @@ file exists: TRUE 182810 bytes
 
 </details>
 
-숫자로도 확인할 수 있다. |MLE LFC| > 0.5인 유전자만 모아 baseMean 구간별로 |shrunken| / |MLE|의 중앙값을 구하면, baseMean 5 이하에서 0.270, 5–20에서 0.616, 20–100에서 0.817, 100–1000에서 0.895, 1000 초과에서 0.941이었다. 발현이 높을수록 1에 가까워, 덜 당겨진다. 이 계산은 "더 깊이 보기"의 실험 1에 있다. 이 노트에서 "실험 N"이라고 부르는 것은 모두 그곳의 접이식 블록이다.
+숫자로 보면, |MLE LFC| > 0.5인 유전자만 모아 baseMean 구간별로 |shrunken| / |MLE|의 중앙값을 구하면, baseMean 5 이하에서 0.270, 5–20에서 0.616, 20–100에서 0.817, 100–1000에서 0.895, 1000 초과에서 0.941이었어요. 발현이 높을수록 1에 가까워서 덜 당겨졌어요. 이 계산은 실험 1에 있어요. 이 노트에서 "실험 N"은 모두 더 깊이 보기의 접이식 블록이에요.
 
-`lfcShrink()`의 방법(`type`)은 세 가지다. 셋 다 posterior(사후분포)를 쓴다. posterior는 likelihood와 prior를 합친 분포다. mode는 그 분포의 꼭대기, mean은 평균이다. 셋은 prior 모양과 돌려주는 값이 다르다.
+`lfcShrink()`에는 방법(`type`)이 세 가지 있어요. 셋 다 posterior(사후분포)를 쓰는데, posterior는 likelihood와 prior를 합친 분포예요. mode는 그 분포의 꼭대기, mean은 평균이고요. 셋은 prior 모양과 돌려주는 값이 달라요.
 
 | `type=` | prior 모양 | 돌려주는 값 | 이 환경 |
 |---|---|---|---|
@@ -193,13 +186,13 @@ file exists: TRUE 182810 bytes
 | `"ashr"` | 0 중심 정규분포 여러 개를 섞은 mixture | posterior mean (라벨 "MMSE", 평균제곱오차를 가장 작게 하는 추정이라는 뜻) | 미설치, 실행 불가 |
 | `"normal"` | 정규분포 N(0, σ²) | posterior mode (MAP) | DESeq2 내장. 이 노트의 모든 실행 |
 
-그래서 "lfcShrink 결과는 모두 MAP"라고 쓰면 ashr에서 틀린다. apeglm처럼 꼬리가 두꺼운 prior는 큰 효과를 덜 누른다.
+그러니 "lfcShrink 결과는 모두 MAP"라고 쓰면 ashr에서 틀려요. 또 apeglm처럼 꼬리가 두꺼운 prior는 큰 효과를 덜 눌러요.
 
-이 환경에는 apeglm과 ashr가 설치되어 있지 않다. `type`의 기본값이 `"apeglm"`이라서 `type`을 생략하면 설치 오류로 멈춘다. 교재 13.2의 예시 `lfcShrink(dds, coef="condition_Starvation_vs_Ctrl", type="apeglm")`도 계수 이름은 맞지만 같은 이유로 멈춘다. 이 노트는 모든 shrinkage를 `type = "normal"`로 돌렸고, apeglm과 ashr에 대한 설명은 `lfcShrink` 소스와 도움말로 확인했다(더 깊이 보기).
+이 환경에는 apeglm과 ashr가 설치되어 있지 않아요. 그런데 `type`의 기본값이 `"apeglm"`이라서 `type`을 생략하면 설치 오류로 멈춰요. 교재 13.2의 예시 `lfcShrink(dds, coef="condition_Starvation_vs_Ctrl", type="apeglm")`도 계수 이름은 맞지만 같은 이유로 멈추고요. 그래서 이 노트의 shrinkage는 모두 `type = "normal"`로 돌렸고, apeglm과 ashr 이야기는 소스와 도움말로 확인한 내용이에요(더 깊이 보기).
 
-## 3. shrink한 뒤 결과표에서 무엇이 바뀌나?
+## 3. shrink하고 나면 결과표에서 무엇이 바뀔까?
 
-바뀌는 것은 `log2FoldChange`와 `lfcSE` 두 열이다. p 값과 padj는 그대로다(1–2절 코드에 이어서 실행).
+바뀌는 건 `log2FoldChange`와 `lfcSE` 두 열뿐이고, p 값과 padj는 그대로예요(1–2절 코드에 이어서 실행).
 
 ```r
 c(pvalue_same = identical(res$pvalue, shr$pvalue), padj_same = identical(res$padj, shr$padj))
@@ -217,52 +210,53 @@ pvalue_same   padj_same
 0.000628 0.001680
 ```
 
-`pvalue`와 `padj`는 값까지 같다. 검정은 여전히 MLE와 그 SE로 한 Wald 검정이다([05](05_wald_vs_lrt.md)). Wald 검정은 (추정치 − 0) / SE를 표준정규분포와 비교한다. shrunken LFC는 검정용이 아니라 효과 크기를 순위 매기고 그림으로 그리고 보고하기 위한 값이다.
+결과를 보면 `pvalue`와 `padj`는 값까지 같아요. 검정은 여전히 MLE와 그 SE로 한 Wald 검정이거든요([05](05_wald_vs_lrt.md)). Wald 검정은 (추정치 − 0) / SE를 표준정규분포와 비교해요. shrunken LFC는 검정용이 아니라 효과 크기의 순위, 그림, 보고를 위한 값이에요.
 
-그렇다면 shrunken LFC를 새 `lfcSE`로 나눠 Z를 다시 만들면 어떨까? gene1349의 Wald 통계량은 −3.419인데 그렇게 만든 값은 −3.142다. 여기서 p를 구하면 0.00168로, 저장된 p 0.000628과 다르다. 이 새 숫자는 MLE 검정도 아니고 Bayes 추론도 아니다. 두 값을 섞은 것일 뿐이다.
+그럼 shrunken LFC를 새 `lfcSE`로 나눠 Z를 다시 만들면 어떨까요? 저도 처음엔 그렇게 해도 되는 줄 알았어요. 그런데 gene1349의 Wald 통계량은 −3.419인데 그렇게 만든 값은 −3.142이고, 여기서 p를 구하면 0.00168로 저장된 p 0.000628과 달라요. 이 새 숫자는 MLE 검정도 Bayes 추론도 아닌, 둘을 섞어 놓은 값일 뿐이에요.
 
-이유는 `lfcSE`의 뜻이 바뀌었기 때문이다. 같은 열 이름이 object를 만든 함수에 따라 다른 양을 담는다.
+이렇게 되는 건 `lfcSE`의 뜻이 바뀌었기 때문이에요. 열 이름은 같아도 object를 만든 함수에 따라 담긴 양이 달라요.
 
 | object를 만든 함수 | `lfcSE`의 뜻 | gene1349 |
 |---|---|---|
 | `results()` | MLE의 Wald SE | 1.70 |
 | `lfcShrink(type = "apeglm")`, `"ashr"` | posterior SD (posterior 분포의 표준편차) | 미설치라 미실행 |
-| `lfcShrink(type = "normal")` | 벌점을 붙인 추정치의 SE. posterior SD도 Wald SE도 아니다 | 0.63 |
+| `lfcShrink(type = "normal")` | 벌점을 붙인 추정치의 SE. posterior SD도 Wald SE도 아님 | 0.63 |
 
-normal의 `lfcSE`는 도움말에 posterior SD라고 적혀 있지만 구현은 다르다. posterior SD를 근사(Laplace 근사)해 직접 계산하면 gene1349에서 0.94가 나온다. normal이 돌려주는 0.63은 이보다 작다(실험 1). 열 설명도 normal에서는 "standard error" 그대로 남는다. apeglm과 ashr는 소스에서 이 설명을 "posterior SD"로 바꿔 쓴다.
+normal의 `lfcSE`는 도움말에 posterior SD라고 적혀 있지만 구현은 달라요. posterior SD를 Laplace 근사로 직접 계산하면 gene1349에서 0.94가 나오는데, normal이 돌려주는 0.63은 이보다 작아요(실험 1). 열 설명도 normal에서는 "standard error" 그대로 남아요. apeglm과 ashr는 소스에서 이 설명을 "posterior SD"로 바꿔 쓰고요.
 
-그래서 "추정치 ± 1.96 × lfcSE"라는 같은 계산이 서로 다른 구간을 만든다.
+그래서 "추정치 ± 1.96 × lfcSE"라는 같은 계산이 서로 다른 구간을 만들어요.
 
 | 그림·표의 막대 | 계산 | 종류 | gene1349 |
 |---|---|---|---|
 | Wald 95% 구간 | `results()`의 LFC ± 1.96·lfcSE | MLE의 명목(빈도주의) 구간 | [−9.14, −2.48] |
-| apeglm posterior interval | `returnList=TRUE`로 받은 apeglm 적합 객체의 `interval` | credible interval (posterior에서 얻은 구간) | 소스의 `ape.cols`에 `"interval"`이 있다. 미설치라 미실행 |
+| apeglm posterior interval | `returnList=TRUE`로 받은 apeglm 적합 객체의 `interval` | credible interval (posterior에서 얻은 구간) | 소스의 `ape.cols`에 `"interval"`이 있음. 미설치라 미실행 |
 | normal의 MAP ± 1.96·lfcSE | `lfcShrink(type = "normal")` | 어느 쪽도 아님 | [−3.20, −0.74] |
 | (참고) MAP ± 1.96·Laplace SD | 직접 계산 | 근사 posterior 구간 | [−3.81, −0.12] |
 | padj | BH(Benjamini–Hochberg) 보정 | 구간이 아니라 FDR 수준 | 0.0084 |
 
-SE가 3.75인 gene2613은 Wald 구간이 [−1.90, 12.81]로 0을 포함하는데, normal의 MAP ± 1.96·lfcSE는 [−0.42, 1.12]로 좁다. 불확실성이 실제보다 작아 보인다. 그림을 그릴 때는 점과 막대가 이 중 무엇인지 캡션에 적는다. `plotMA(res)`의 점은 MLE이고 `plotMA(shr)`의 점은 shrunken LFC다.
+SE가 3.75인 gene2613은 Wald 구간이 [−1.90, 12.81]로 0을 포함하는데, normal의 MAP ± 1.96·lfcSE는 [−0.42, 1.12]로 좁아서 불확실성이 실제보다 작아 보여요. 그래서 그림에는 점과 막대가 이 중 무엇인지 캡션에 적어 둬요. `plotMA(res)`의 점은 MLE이고, `plotMA(shr)`의 점은 shrunken LFC예요.
 
-apeglm이나 ashr에 `svalue = TRUE`를 주면 p 값 대신 s-value가 나온다. s-value는 "이 유전자보다 s-value가 같거나 작은 유전자들 사이에서 LFC의 부호가 틀렸을 확률의 평균"이다. padj는 "이 유전자까지 발견으로 부를 때, 목록에 실제로는 차이가 없는(β = 0) 유전자가 섞인 비율의 기대값(FDR)을 통제하는 최소 수준"이다([06](06_multiple_testing.md)). 둘 다 목록 단위의 값이지만, s-value는 부호 오류를, padj는 차이 없는 유전자가 섞이는 것을 다룬다.
+apeglm이나 ashr에 `svalue = TRUE`를 주면 p 값 대신 s-value가 나와요. s-value는 "이 유전자보다 s-value가 같거나 작은 유전자들 사이에서 LFC의 부호가 틀렸을 확률의 평균"이에요. 한편 padj는 "이 유전자까지 발견으로 부를 때, 목록에 실제로는 차이가 없는(β = 0) 유전자가 섞인 비율의 기대값(FDR)을 통제하는 최소 수준"이었죠([06](06_multiple_testing.md)). 둘 다 목록 단위의 값이지만, s-value는 부호가 틀리는 것을, padj는 차이 없는 유전자가 섞이는 것을 다뤄요.
 
-예외도 있다. `lfcThreshold`는 "LFC가 0이 아니다" 대신 "|LFC|가 이 값보다 크다"를 검정하게 하는 인자다. normal에 `lfcThreshold > 0`을 주면 `stat`, `pvalue`, `padj`까지 shrunken 적합의 threshold 검정으로 바뀐다(실험 2). apeglm과 ashr는 기본 호출에서 `stat` 열을 뺀다. type별 열 구성은 "더 깊이 보기"의 lfcShrink 소스 블록에 정리했다.
+p 값이 그대로라는 데에도 예외가 있어요. `lfcThreshold`는 "LFC가 0이 아니다" 대신 "|LFC|가 이 값보다 크다"를 검정하게 하는 인자인데, normal에 `lfcThreshold > 0`을 주면 `stat`, `pvalue`, `padj`까지 shrunken 적합의 threshold 검정으로 바뀌어요(실험 2). 또 apeglm과 ashr는 기본 호출에서 `stat` 열을 빼요. type별 열 구성은 더 깊이 보기의 lfcShrink 소스 블록에 정리해 뒀어요.
 
-## 4. Starvation과 Glucose를 직접 비교할 때는 어떻게 shrink하나?
+## 4. Starvation과 Glucose를 직접 비교할 때는 어떻게 shrink할까?
 
-공통 예제의 세 그룹을 생각하자. Ctrl, Starvation, Starvation+Glucose(줄여서 Glucose)다. Ctrl을 기준으로 두면 계수는 `condition_Starvation_vs_Ctrl`과 `condition_Glucose_vs_Ctrl` 두 개다. "Glucose vs Starvation"은 계수가 아니라 두 계수의 차, 즉 contrast다. contrast는 어떤 두 조건(또는 계수 조합)을 비교할지 정하는 벡터다([04](04_glm_condition_batch.md)).
+공통 예제의 세 그룹 Ctrl, Starvation, Starvation+Glucose(줄여서 Glucose)를 생각해 볼게요. Ctrl을 기준으로 두면 계수는 `condition_Starvation_vs_Ctrl`과 `condition_Glucose_vs_Ctrl` 두 개예요. "Glucose vs Starvation"은 계수가 아니라 두 계수의 차, 즉 contrast예요. contrast는 어떤 두 조건(또는 계수 조합)을 비교할지 정하는 벡터예요([04](04_glm_condition_batch.md)).
 
-그러면 두 계수를 각각 shrink한 뒤 빼면 Glucose vs Starvation의 shrunken LFC가 될까? 세 그룹 모의 데이터(A=Ctrl, B=Starvation, C=Glucose, 각 3개, 유전자 2000개)로 확인했다(실험 2).
+그러면 두 계수를 각각 shrink한 뒤 빼면 Glucose vs Starvation의 shrunken LFC가 될까요? 세 그룹 모의 데이터(A=Ctrl, B=Starvation, C=Glucose, 각 3개, 유전자 2000개)로 확인해 봤어요(실험 2).
 
-- MLE에서는 뺄셈이 정확히 맞는다. (C − A) − (B − A)와 `results(contrast = c("condition", "C", "B"))`의 최대 차이는 8.9e-16이다. 예외는 B와 C가 모두 0인 유전자 14개다. 이 경우 `results()`가 contrast의 LFC를 0, p를 1로 덮어쓴다.
-- shrink한 값은 다르다. 두 shrunken 계수의 차와 `lfcShrink(contrast = ...)`의 차이는 최대 0.69, 중앙값 0.05였다. 저발현 gene158(baseMean 4.7)은 MLE 4.27, 뺄셈 0.66, contrast shrink 1.35였다.
+MLE에서는 뺄셈이 정확히 맞아요. (C − A) − (B − A)와 `results(contrast = c("condition", "C", "B"))`의 최대 차이는 8.9e-16이에요. 예외는 B와 C가 모두 0인 유전자 14개인데, 이때는 `results()`가 contrast의 LFC를 0, p를 1로 덮어써요.
 
-차이는 prior에서 온다. 여기서 design matrix는 각 sample이 어떤 조건·batch·pair에 속하는지 숫자로 적은 표다. `coef` 경로는 기준 수준을 둔 보통의 design matrix에서 계수마다 prior 분산을 따로 정한다(Starvation 0.80, Glucose 1.695). `contrast` 경로는 모든 수준에 같은 prior 분산(1.195)을 둔 다른 형태의 design matrix로 다시 적합한다. Starvation을 기준으로 다시 잡아(`relevel`) `coef`로 부르면 prior 분산이 또 달라서(0.8, 1.089) contrast 경로와 최대 1.24, 뺄셈과 최대 1.28 차이가 난다. apeglm은 `coef`만 받고, 호출할 때마다 그 계수 하나의 posterior만 다시 추정한다.
+그런데 shrink한 값은 달라요. 두 shrunken 계수의 차와 `lfcShrink(contrast = ...)`의 차이는 최대 0.69, 중앙값 0.05였어요. 예를 들어 저발현 gene158(baseMean 4.7)은 MLE 4.27, 뺄셈 0.66, contrast shrink 1.35였어요.
 
-세 방법은 서로 다른 prior를 쓰는 셈이라 어느 하나만 "정답"은 아니다. 교재의 결론, 즉 두 shrunken 계수를 빼는 것이 contrast의 올바른 posterior shrinkage와 같지 않다는 말은 맞다. 다만 normal에서 그 이유는 prior를 어떤 계수에 걸었느냐다. 같은 비교라도 계수를 어떻게 정의했는지(기준 수준, design matrix 형태)에 따라 prior가 달라진다. 보고할 때는 어떤 경로를 썼는지 밝히고 `priorInfo()`로 prior 분산을 남긴다.
+차이는 prior에서 와요. 여기서 design matrix는 각 sample이 어떤 조건·batch·pair에 속하는지 숫자로 적은 표예요. `coef` 경로는 기준 수준을 둔 보통의 design matrix에서 계수마다 prior 분산을 따로 정해요(Starvation 0.80, Glucose 1.695). `contrast` 경로는 모든 수준에 같은 prior 분산(1.195)을 둔 다른 형태의 design matrix로 다시 적합하고요. Starvation을 기준으로 다시 잡아(`relevel`) `coef`로 부르면 prior 분산이 또 달라져서(0.8, 1.089) contrast 경로와 최대 1.24, 뺄셈과 최대 1.28 차이가 나요. apeglm은 `coef`만 받고, 호출할 때마다 그 계수 하나의 posterior만 다시 추정해요.
 
-## 5. 결과표의 NA는 무엇을 뜻하나?
+결국 세 방법은 서로 다른 prior를 쓰는 셈이라 어느 하나만 "정답"은 아니에요. 두 shrunken 계수를 빼는 것이 contrast의 올바른 posterior shrinkage와 같지 않다는 교재의 결론은 맞아요. 다만 normal에서 그 이유는 prior를 어떤 계수에 걸었느냐예요. 같은 비교라도 계수를 어떻게 정의했는지(기준 수준, design matrix 형태)에 따라 prior가 달라지거든요. 보고할 때는 어떤 경로를 썼는지 밝히고, `priorInfo()`로 prior 분산을 남겨 두세요.
 
-유전자 A로 돌아가자. Ctrl의 첫 sample이 100이 아니라 1000이었다고 해 보자. 시료 오염 같은 사고로 한 sample만 튄 상황이다. dispersion α는 0.053147로 고정했다.
+## 5. 결과표의 NA는 무엇을 뜻할까?
+
+유전자 A로 돌아가 볼게요. Ctrl의 첫 sample이 100이 아니라 1000이었다고 해 봐요. 시료 오염 같은 사고로 한 sample만 튄 상황이에요. dispersion α는 0.053147로 고정했어요.
 
 ```r
 suppressPackageStartupMessages(library(DESeq2))
@@ -291,25 +285,21 @@ Ctrl1 = 1000 | cooks: 18.801 4.088 5.355 0.019 0.304 0.171 | maxCooks: 18.801 | 
   robust alpha: 0.04  H: 0.3333 0.3333 0.3333 0.3333 0.3333 0.3333
 ```
 
-원래 데이터에서 `cooks`의 최댓값은 0.363이다. 첫 sample을 1000으로 바꾸면 그 sample의 값이 18.80이 되고 `pvalue`가 NA가 된다. LFC는 −0.95로 남아 있다. Ctrl 평균이 406.7로 뛰어서 방향이 뒤집힌 값이다.
+원래 데이터에서는 `cooks`의 최댓값이 0.363이에요. 첫 sample을 1000으로 바꾸면 그 sample의 값이 18.80으로 뛰고 `pvalue`가 NA가 돼요. LFC는 −0.95로 남아 있는데, Ctrl 평균이 406.7로 뛰어서 방향이 뒤집힌 값이에요.
 
-`cooks`는 Cook's distance다. 한 sample의 count가 계수 추정을 얼마나 끌고 가는지를 나타낸다. DESeq2는 다음 식으로 계산한다.
+`cooks`는 Cook's distance로, 한 sample의 count가 계수 추정을 얼마나 끌고 가는지 나타내요. DESeq2는 이렇게 계산해요.
 
 $$
 \text{Cook}_{ij} = \frac{(K_{ij} - \mu_{ij})^2}{V_{ij}} \cdot \frac{1}{p} \cdot \frac{h_{jj}}{(1 - h_{jj})^2}, \qquad V_{ij} = \mu_{ij} + \tilde\alpha_i\, \mu_{ij}^2
 $$
 
-- K_ij: 유전자 i, sample j의 count. μ_ij: 그 sample의 기대 count.
-- V_ij: 그 count의 분산. α̃_i는 이 계산에만 쓰는 dispersion으로, 튀는 값에 덜 흔들리게 따로 구한다. 하한이 0.04이고 유전자 A는 하한값 0.04다.
-- 첫 항 (K − μ)²/V: count가 기대에서 얼마나 벗어났는가.
-- p: 계수 개수. 두 그룹이면 2.
-- h_jj: leverage. 그 sample이 자기 적합값을 얼마나 끌어당길 수 있는 위치인지 나타낸다. 한 그룹에 3개씩이면 1/3이고, h/(1 − h)² = 0.75다.
+K_ij는 유전자 i, sample j의 count이고 μ_ij는 그 sample의 기대 count예요. V_ij는 그 count의 분산인데, 여기 들어가는 α̃_i는 튀는 값에 덜 흔들리도록 이 계산에서만 따로 구하는 dispersion이에요(하한 0.04, 유전자 A도 0.04). 첫 항 (K − μ)²/V는 count가 기대에서 얼마나 벗어났는지를 재요. p는 p 값이 아니라 계수 개수라서 두 그룹이면 2예요. h_jj는 leverage로, 그 sample이 자기 적합값을 얼마나 끌어당길 수 있는 위치인지 나타내요. 한 그룹에 3개씩이면 1/3이고, h/(1 − h)² = 0.75예요.
 
-1000을 넣은 경우를 대입하면 μ = (1000 + 130 + 90) / 3 = 406.67, V = 406.67 + 0.04 × 406.67² = 7021.8이다. (1000 − 406.67)² / 7021.8 = 50.14이고, 여기에 1/2과 0.75를 곱하면 18.80이다.
+1000을 넣은 경우를 직접 대입해 봤어요. μ = (1000 + 130 + 90) / 3 = 406.67, V = 406.67 + 0.04 × 406.67² = 7021.8이고, (1000 − 406.67)² / 7021.8 = 50.14에 1/2과 0.75를 곱하면 출력과 같은 18.80이 나와요.
 
-기준값은 F 분포의 99% 분위수 F₀.₉₉(p, n − p)다. n은 sample 수다. n = 6, p = 2면 F₀.₉₉(2, 4) = 18.0이다. 18.80 > 18이므로 이 유전자의 p를 NA로 둔다. LFC는 남긴다. 그래서 "LFC는 있는데 p만 NA"가 Cook's outlier의 표시다.
+기준값은 F 분포의 99% 분위수 F₀.₉₉(p, n − p)이고, n은 sample 수예요. n = 6, p = 2면 F₀.₉₉(2, 4) = 18.0이죠. 18.80 > 18이니 DESeq2는 이 유전자의 p를 NA로 두고 LFC는 남겨요. 그래서 "LFC는 있는데 p만 NA"가 Cook's outlier의 표시예요.
 
-결과표의 NA는 원인마다 다른 열에 나타난다.
+결과표의 NA는 원인마다 다른 열에 나타나요.
 
 | 결과표에서 보이는 것 | 원인 | 확인할 것 | 확인한 곳 |
 |---|---|---|---|
@@ -317,38 +307,38 @@ $$
 | LFC는 있고 p, padj만 NA | Cook's distance가 기준을 넘은 count outlier | `assays(dds)[["cooks"]]`, `mcols(dds)$maxCooks` | 실험 3의 (a), (e) |
 | p는 있고 padj만 NA | independent filtering: baseMean이 `filterThreshold`보다 낮아 보정 대상에서 빠짐 ([06](06_multiple_testing.md)) | `metadata(res)$filterThreshold` | 실험 4, 문제 17 |
 | baseMean은 0보다 큰데 LFC부터 padj까지 모두 NA | weights 때문에 그 유전자의 계수를 추정할 수 없음 (`weightsFail`, all-zero처럼 처리됨) | `mcols(dds)$weightsFail` | 더 깊이 보기의 "p까지 NA가 되는 경우" |
-| (NA 아님) 수렴 경고 | IRLS와 그 대안인 optim 계산이 모두 수렴하지 못함 (`betaConv == FALSE`) | `mcols(dds)$betaConv`, `betaIter`, design matrix의 full rank | 실험 4 (미수렴 0건). 일부러 만든 미수렴에서도 p는 NA가 아니다 (더 깊이 보기의 "p까지 NA가 되는 경우") |
+| (NA 아님) 수렴 경고 | IRLS와 그 대안인 optim 계산이 모두 수렴하지 못함 (`betaConv == FALSE`) | `mcols(dds)$betaConv`, `betaIter`, design matrix의 full rank | 실험 4 (미수렴 0건). 일부러 만든 미수렴에서도 p는 NA가 아님 (더 깊이 보기의 "p까지 NA가 되는 경우") |
 | (NA 아님) LFC 0, stat 0, p 1 | `contrast=`로 비교하는 두 그룹이 모두 0 (`cleanContrast`) | 두 그룹의 count | 실험 2 (gene357) |
 
-실험 1의 데이터(유전자 3000개)에서 세어 보면, 모두 NA인 all-zero 유전자가 16개, padj만 NA인 유전자가 579개였다. 579개의 baseMean은 모두 `filterThreshold` 4.4313보다 낮았다. Cook's outlier는 없었고(최대 17.54 < 18), 수렴 실패도 없었다(실험 4).
+실험 1의 데이터(유전자 3000개)에서 세어 보면, 모두 NA인 all-zero 유전자가 16개, padj만 NA인 유전자가 579개였어요. 579개의 baseMean은 모두 `filterThreshold` 4.4313보다 낮았고요. Cook's outlier는 없었고(최대 17.54 < 18), 수렴 실패도 없었어요(실험 4).
 
-Cook's 필터가 언제나 작동하는 것은 아니다. DESeq2는 design의 같은 칸(cell)에 sample이 3개 이상 있을 때만 그 sample들로 Cook's 판정을 한다. 여기서 칸은 design matrix에서 같은 행을 갖는 sample 묶음, 즉 조건·batch 조합이 같은 sample들이다. 모의 데이터의 한 유전자에 5000을 넣어 설계별로 확인했다(실험 3).
+그런데 Cook's 필터가 언제나 작동하는 건 아니에요. DESeq2는 design의 같은 칸(cell)에 sample이 3개 이상 있을 때만 그 sample들로 Cook's 판정을 해요. 여기서 칸은 design matrix에서 같은 행을 갖는 sample 묶음, 즉 조건·batch 조합이 같은 sample들이에요. 모의 데이터의 한 유전자에 5000을 넣고 설계별로 확인해 봤어요(실험 3).
 
 | 설계 | 무슨 일이 일어나나 |
 |---|---|
 | 3 vs 3 | Cook's 36.9 > 18이라 p가 NA. 필터를 끄면(`cooksCutoff=FALSE`) p = 0.00177 |
-| 2 vs 2 | 3개 이상인 칸이 없어 `maxCooks`가 모두 NA. 필터 없이 p = 0.00451이 그대로 나온다 |
-| 3 vs 2 | 3개짜리 그룹의 sample만 판정한다. 2개짜리 그룹의 큰 Cook's는 무시된다 |
-| `~ pair + condition` (paired) | sample마다 design matrix의 행이 달라 칸당 1개다. Cook's 필터가 아예 없다 |
-| 칸에 7개 이상 (예: 7 vs 7) | 튀는 count를 trimmed mean(위아래 20%를 뺀 평균) × size factor 값으로 바꾸고 다시 적합한다(5000 → 5). 원래 count는 `counts(dds)`에 남는다. 모든 sample이 교체 대상이면 이후 `results()`의 Cook's 필터는 꺼진다 |
+| 2 vs 2 | 3개 이상인 칸이 없어 `maxCooks`가 모두 NA. 필터 없이 p = 0.00451이 그대로 나옴 |
+| 3 vs 2 | 3개짜리 그룹의 sample만 판정. 2개짜리 그룹의 큰 Cook's는 무시됨 |
+| `~ pair + condition` (paired) | sample마다 design matrix의 행이 달라 칸당 1개. Cook's 필터가 아예 없음 |
+| 칸에 7개 이상 (예: 7 vs 7) | 튀는 count를 trimmed mean(위아래 20%를 뺀 평균) × size factor 값으로 바꾸고 다시 적합(5000 → 5). 원래 count는 `counts(dds)`에 남음. 모든 sample이 교체 대상이면 이후 `results()`의 Cook's 필터는 꺼짐 |
 
-공통 예제에서 같은 donor로부터 세 조건을 얻어 `~ pair + condition`으로 분석하면 Cook's 필터는 작동하지 않는다. 한 sample이 결론을 좌우하는지는 `plotCounts()`로 직접 봐야 한다.
+공통 예제에서 같은 donor로부터 세 조건을 얻어 `~ pair + condition`으로 분석하면 Cook's 필터는 작동하지 않아요. 이럴 때 한 sample이 결론을 좌우하는지는 `plotCounts()`로 직접 봐야 해요.
 
-마지막으로, NA는 생물학적 결론이 아니다. p가 NA인 Cook's outlier 유전자는 오히려 LFC −7.9의 큰 차이를 보였다(실험 3). padj만 NA인 유전자는 count가 낮아 보정 대상에서 빠진 것이다. 그러니 NA를 "발현 차이 없음"이나 "발현 없음"으로 바꾸지 않는다. 메타분석이나 민감도 비교에서 NA를 "발견 아님"으로 세는 규칙은 쓸 수 있다. 다만 그 규칙과 NA의 원인(위 표의 열 패턴)을 함께 기록한다.
+마지막으로, NA는 생물학적 결론이 아니에요. p가 NA인 Cook's outlier 유전자는 오히려 LFC −7.9의 큰 차이를 보였어요(실험 3). padj만 NA인 유전자는 count가 낮아 보정 대상에서 빠진 것뿐이고요. 그러니 NA를 "발현 차이 없음"이나 "발현 없음"으로 바꿔 읽으면 안 돼요. 메타분석이나 민감도 비교에서 NA를 "발견 아님"으로 세는 규칙을 쓸 수는 있지만, 그때는 규칙과 NA의 원인(위 표의 열 패턴)을 함께 기록해 두세요.
 
-## 6. VST와 PCA는 무엇을 보여 주고, 무엇을 하지 않나?
+## 6. VST와 PCA는 무엇을 보여 주고, 무엇은 해 주지 않을까?
 
-유전자 A의 Ctrl 평균은 106.7, Starvation 평균은 210이다. 음이항분포(NB)에서 분산은 μ + αμ²이므로, α = 0.053147이면 분산은 각각 106.667 + 0.053147 × 106.667² ≈ 711과 210 + 0.053147 × 210² ≈ 2554다. 평균은 약 2배인데 분산은 3.6배다. 이처럼 count의 분산은 평균에 따라 달라진다. VST(variance stabilizing transformation, 분산 안정화 변환)와 rlog(regularized log)는 이 평균–분산 의존성과 low count의 잡음을 줄이는 변환이다. 변환한 값은 PCA, clustering, heatmap 같은 탐색용 그림에 쓴다.
+유전자 A의 Ctrl 평균은 106.7, Starvation 평균은 210이에요. 음이항분포(NB)에서 분산은 μ + αμ²이니까, α = 0.053147이면 분산은 각각 106.667 + 0.053147 × 106.667² ≈ 711, 210 + 0.053147 × 210² ≈ 2554예요. 평균은 약 2배인데 분산은 3.6배죠. 이처럼 count의 분산은 평균에 따라 달라져요. VST(variance stabilizing transformation, 분산 안정화 변환)와 rlog(regularized log)는 이런 평균–분산 의존성과 low count의 잡음을 줄이는 변환이에요. 변환한 값은 PCA, clustering, heatmap 같은 탐색용 그림에 써요.
 
-변환한 값을 검정에 넣지는 않는다. DESeq2의 NB GLM은 raw count의 평균–분산 관계와 size factor를 직접 모형에 넣는다. 변환값은 그 관계를 이미 눌러 버린 log 척도의 값이다. 검정에 필요한 정보가 이미 사라진 셈이다. 변환값을 `DESeqDataSetFromMatrix()`에 넣으면 정수가 아니라고 거부하는데, 이것은 증상일 뿐이다. `round(2^vst)`처럼 정수로 되돌려도 문제는 그대로다.
+하지만 변환한 값을 검정에 넣지는 않아요. DESeq2의 NB GLM은 raw count의 평균–분산 관계와 size factor를 직접 모형에 넣는데, 변환값은 그 관계를 이미 눌러 버린 log 척도의 값이라 검정에 필요한 정보가 사라진 셈이거든요. 변환값을 `DESeqDataSetFromMatrix()`에 넣으면 정수가 아니라고 거부하는데, 이건 증상일 뿐이에요. `round(2^vst)`처럼 정수로 되돌려도 문제는 그대로예요.
 
-`blind` 인자는 자주 오해된다. `blind = TRUE`는 dispersion trend를 추정할 때 design을 `~1`로 바꾼다. `~1`은 조건 정보를 전혀 쓰지 않는 design이다. `blind = FALSE`는 현재 design을 쓴다. 둘 다 변환된 행렬에서 batch나 condition 효과를 빼 주지는 않는다.
+`blind` 인자도 자주 오해받아요. `blind = TRUE`는 dispersion trend를 추정할 때 design을 조건 정보를 전혀 쓰지 않는 `~1`로 바꾸고, `blind = FALSE`는 현재 design을 그대로 써요. 그런데 둘 다 변환된 행렬에서 batch나 condition 효과를 빼 주지는 않아요.
 
-실험 5는 이것을 보여 준다. condition(A, B)과 batch(b1, b2)를 균형 있게 배치한 8개 sample에서, 유전자 600개가 b2에서 2배 높도록 만들었다. `~ batch + condition`으로 `DESeq()`를 돌린 뒤 `vst(blind = FALSE)` 값으로 PCA를 그렸다. PCA(주성분 분석)는 sample 사이의 차이를 가장 크게 보여 주는 축 몇 개로 데이터를 요약하는 방법이다.
+실험 5가 이걸 보여 줘요. condition(A, B)과 batch(b1, b2)를 균형 있게 배치한 8개 sample에서 유전자 600개가 b2에서 2배 높도록 만들고, `~ batch + condition`으로 `DESeq()`를 돌린 뒤 `vst(blind = FALSE)` 값으로 PCA를 그렸어요. PCA(주성분 분석)는 sample 사이의 차이를 가장 크게 보여 주는 축 몇 개로 데이터를 요약하는 방법이에요.
 
 ![PCA of VST data before and after removing batch for plotting](../figures/07_pca_vst_batch.png)
 
-왼쪽 `vst(blind = FALSE)`에서도 PC2가 batch로 갈린다(PC2의 batch 평균 ±5.58). 오른쪽은 같은 행렬의 사본에 `limma::removeBatchEffect()`를 적용한 것이다. 이 함수는 변환된 값에서 batch 효과를 선형모형으로 추정해 빼 준다. 그 결과 PC2의 batch 평균이 0이 되었다.
+왼쪽 `vst(blind = FALSE)`에서도 PC2가 batch로 갈려요(PC2의 batch 평균 ±5.58). 오른쪽은 같은 행렬의 사본에 `limma::removeBatchEffect()`를 적용한 거예요. 이 함수는 변환된 값에서 batch 효과를 선형모형으로 추정해 빼 주는데, 그 결과 PC2의 batch 평균이 0이 됐어요.
 
 <details>
 <summary>그림을 만든 코드</summary>
@@ -404,28 +394,27 @@ file exists: TRUE 29403 bytes
 
 </details>
 
-batch를 뺀 오른쪽 행렬은 그림 전용이다. 검정은 여전히 raw count와 `~ batch + condition` design으로 `DESeq()`에서 한다. batch와 condition이 완전히 겹치게 설계를 바꾸면 `DESeq()`는 "full model matrix is less than full rank"라며 적합을 거부한다. 이런 설계에서는 PCA에서 깨끗하게 갈라져 보여도 그것이 condition 효과인지 batch 효과인지 데이터로 구분할 수 없다.
+batch를 뺀 오른쪽 행렬은 그림 전용이에요. 검정은 여전히 raw count와 `~ batch + condition` design으로 `DESeq()`에서 해요. batch와 condition이 완전히 겹치게 설계를 바꾸면 `DESeq()`는 "full model matrix is less than full rank"라며 적합을 거부해요. 이런 설계에서는 PCA에서 깨끗하게 갈라져 보여도 그게 condition 효과인지 batch 효과인지 데이터로 구분할 수 없어요.
 
-함수 선택에도 작은 차이가 있다. 교재 예시의 `varianceStabilizingTransformation(dds, blind = FALSE)`는 `DESeq()`가 이미 맞춘 trend를 그대로 쓴다. `vst(dds, blind = FALSE)`는 baseMean > 5인 유전자 중 1000개(`nsub`)를 골라 trend를 다시 맞추므로 값이 조금 다르다(최대 0.289). `rlog(blind = FALSE)`도 batch를 지우지 않는다(PC2 ±6.0).
+함수 선택에도 작은 차이가 있어요. 교재 예시의 `varianceStabilizingTransformation(dds, blind = FALSE)`는 `DESeq()`가 이미 맞춘 trend를 그대로 써요. 반면 `vst(dds, blind = FALSE)`는 baseMean > 5인 유전자 중 1000개(`nsub`)를 골라 trend를 다시 맞춰서 값이 조금 달라요(최대 0.289). `rlog(blind = FALSE)`도 batch를 지우지 않았어요(PC2 ±6.0).
 
-QC 그림에서 볼 것을 정리하면 다음과 같다.
+QC 그림은 이렇게 읽으면 돼요.
 
-- PCA (`plotPCA`, 기본은 분산 상위 500개 유전자): condition뿐 아니라 batch, donor, RNA quality(RIN 같은 colData의 품질 변수), 이상 sample을 본다.
-- dispersion plot (`plotDispEsts`): trend가 잘 맞는지, trend보다 훨씬 위에 있는 유전자가 있는지 본다.
-- MA plot (`plotMA`): 저발현 유전자의 큰 MLE와, shrinkage가 그것을 어떻게 누르는지 구분해 본다(1번 그림).
-- 관심 유전자 (`plotCounts(dds, gene, intgroup, returnData = TRUE)`): 정규화 count를 sample별로 꺼내 한 sample이 결론을 좌우하는지 본다. 반환되는 `count` 열은 기본값(`transform = TRUE`)에서 정규화 count + 0.5다.
+- PCA(`plotPCA`, 기본은 분산 상위 500개 유전자)에서는 condition뿐 아니라 batch, donor, RNA quality(RIN 같은 colData의 품질 변수), 이상 sample을 봐요.
+- dispersion plot(`plotDispEsts`)에서는 trend가 잘 맞는지, trend보다 훨씬 위에 있는 유전자가 있는지 봐요.
+- MA plot(`plotMA`)에서는 저발현 유전자의 큰 MLE와, shrinkage가 그걸 어떻게 누르는지를 구분해 봐요(2절의 MA plot).
+- 관심 유전자는 `plotCounts(dds, gene, intgroup, returnData = TRUE)`로 정규화 count를 sample별로 꺼내, 한 sample이 결론을 좌우하는지 봐요. 반환되는 `count` 열은 기본값(`transform = TRUE`)에서 정규화 count + 0.5예요.
 
-PCA가 기대대로 갈라지지 않는다고 DESeq2가 잘못된 것은 아니다. 반대로 잘 갈라진다고 design의 교락(confounding)이 해결된 것도 아니다. 데이터 품질, 실험 설계, 모형 진단을 함께 본다.
+PCA가 기대대로 갈라지지 않는다고 DESeq2가 잘못된 건 아니에요. 반대로 잘 갈라진다고 design의 교락(confounding)이 해결된 것도 아니고요. 데이터 품질, 실험 설계, 모형 진단을 함께 봐야 해요.
 
-## 한 번에 정리
+## 정리
 
-- count가 적은 유전자의 MLE LFC는 크게 튄다. gene1349는 −5.81(56배)이었지만 95% 구간은 약 5.6배에서 560배 감소까지였다.
-- `lfcShrink()`는 0 중심 prior로 정보가 적은 LFC를 크게, 정보가 많은 LFC를 조금 당긴다. 배율은 대략 σ²/(σ² + SE²)다. 유전자 A는 0.977 → 0.929, gene1349는 −5.81 → −1.97.
-- 기본 호출에서 `pvalue`와 `padj`는 바뀌지 않는다. shrunken LFC를 `lfcSE`로 나눠 p를 다시 만들지 않는다.
-- `lfcSE`는 object를 만든 함수에 따라 Wald SE, posterior SD, 벌점 추정치의 SE로 뜻이 다르다. 그림의 막대가 무엇인지 적는다.
-- 두 shrunken 계수의 차, contrast 경로, relevel 경로는 서로 다른 prior를 써서 다른 값을 준다. 어떤 경로를 썼는지 기록한다.
-- NA는 열 패턴으로 원인을 읽는다. 전부 NA는 all-zero, p만 NA는 Cook's outlier, padj만 NA는 independent filtering이다. Cook's 필터는 칸에 sample이 3개 이상일 때만 작동한다.
-- 추정 안정화(shrinkage), 검정, 시각화(VST/rlog, PCA)는 목적이 다르다. 검정은 Wald 검정이나 LRT(가능도비 검정)로 한다([05](05_wald_vs_lrt.md)). `blind = FALSE`도 batch를 지우지 않는다.
+- count가 적은 유전자의 MLE LFC는 크게 튀어요. gene1349는 −5.81(56배)이었지만 95% 구간은 약 5.6배에서 560배 감소까지였죠.
+- `lfcShrink()`는 0 중심 prior로 정보가 적은 LFC는 많이, 정보가 많은 LFC는 조금 당겨요. 배율은 대략 σ²/(σ² + SE²)라서 유전자 A는 0.977 → 0.929, gene1349는 −5.81 → −1.97이 됐어요.
+- 기본 호출에서 `pvalue`와 `padj`는 그대로예요. shrunken LFC를 `lfcSE`로 나눠 p를 다시 만들면 안 되고, `lfcSE`도 만든 함수에 따라 Wald SE, posterior SD, 벌점 추정치의 SE로 뜻이 달라서 그림의 막대가 무엇인지 적어 둬야 해요.
+- 두 shrunken 계수의 차, contrast 경로, relevel 경로는 서로 다른 prior를 써서 값도 달라요. 어떤 경로를 썼는지 기록해 두세요.
+- NA는 열 패턴으로 원인을 읽어요. 전부 NA면 all-zero, p만 NA면 Cook's outlier, padj만 NA면 independent filtering이에요. Cook's 필터는 칸에 sample이 3개 이상일 때만 작동해요.
+- shrinkage(추정 안정화), 검정, 시각화(VST/rlog, PCA)는 하는 일이 달라요. 검정은 Wald 검정이나 LRT(가능도비 검정)로 하고([05](05_wald_vs_lrt.md)), `blind = FALSE`도 batch를 지워 주지는 않아요.
 
 ## 연습문제
 
@@ -434,13 +423,13 @@ PCA가 기대대로 갈라지지 않는다고 DESeq2가 잘못된 것은 아니�
 <details>
 <summary>풀이</summary>
 
-independent filtering을 먼저 확인한다. `results()`는 baseMean이 `filterThreshold`보다 낮은 유전자의 padj를 NA로 둔다(`pvalueAdjustment()` 안에서 한다).
+independent filtering부터 확인해요. `results()`는 baseMean이 `filterThreshold`보다 낮은 유전자의 padj를 NA로 둬요(`pvalueAdjustment()` 안에서 일어나요).
 
-실험 4에서 p는 있고 padj만 NA인 유전자는 579개였다. `metadata(res)$filterThreshold`는 4.4313이었고, 579개의 baseMean 최댓값은 4.4307로 모두 threshold 아래였다. threshold 이상이면서 padj만 NA인 유전자는 0개였다. `results(dds, independentFiltering = FALSE)`로 다시 뽑으면 이런 NA는 0개가 된다.
+실험 4에서 p는 있고 padj만 NA인 유전자는 579개였어요. `metadata(res)$filterThreshold`는 4.4313이었고, 579개의 baseMean 최댓값은 4.4307로 모두 threshold 아래였어요. threshold 이상이면서 padj만 NA인 유전자는 0개였고요. `results(dds, independentFiltering = FALSE)`로 다시 뽑으면 이런 NA는 0개가 돼요.
 
-p까지 NA라면 원인이 다르다. baseMean이 0이면 all-zero다. baseMean이 0보다 크면 `mcols(dds)$maxCooks`가 기준 F₀.₉₉(p, n − p)를 넘는 Cook's outlier인지 본다(실험 3의 (a): baseMean 783, LFC −7.9, p NA).
+p까지 NA라면 원인이 달라요. baseMean이 0이면 all-zero예요. baseMean이 0보다 크면 `mcols(dds)$maxCooks`가 기준 F₀.₉₉(p, n − p)를 넘는 Cook's outlier인지 봐요(실험 3의 (a): baseMean 783, LFC −7.9, p NA).
 
-교재 부록 B의 답 가운데 independent filtering, all-zero, count outlier 부분은 일치한다. 교재가 함께 든 "fitting 문제"는 두 경우로 갈린다. IRLS가 수렴하지 않은 경우(`betaConv = FALSE`)는 p를 NA로 만들지 않는다. 반면 weights 때문에 계수를 추정할 수 없는 행은 `weightsFail`로 표시되고 all-zero처럼 처리되어 p까지 NA가 된다. 이 노트의 데이터에는 미수렴이 0건이라 두 경우 모두 일부러 만들어 확인했다(더 깊이 보기의 "p까지 NA가 되는 경우"). 같은 문제를 다른 데이터(116개, filterThreshold 1.59)로 푼 것은 [06_multiple_testing.md](06_multiple_testing.md)에 있다.
+교재 부록 B의 답 가운데 independent filtering, all-zero, count outlier 부분은 실제와 맞아요. 교재가 함께 든 "fitting 문제"는 두 경우로 갈려요. IRLS가 수렴하지 않은 경우(`betaConv = FALSE`)는 p를 NA로 만들지 않아요. 반면 weights 때문에 계수를 추정할 수 없는 행은 `weightsFail`로 표시되고 all-zero처럼 처리되어 p까지 NA가 돼요. 이 노트의 데이터에는 미수렴이 0건이라, 두 경우 모두 일부러 만들어 확인했어요(더 깊이 보기의 "p까지 NA가 되는 경우"). 같은 문제를 다른 데이터(116개, filterThreshold 1.59)로 푼 풀이는 [06_multiple_testing.md](06_multiple_testing.md)에 있어요.
 
 </details>
 
@@ -449,27 +438,26 @@ p까지 NA라면 원인이 다르다. baseMean이 0이면 all-zero다. baseMean�
 <details>
 <summary>풀이</summary>
 
-둘 다 아니다.
+둘 다 아니에요.
 
-첫째, Z를 다시 만들면 안 된다. 실행할 수 있는 `type = "normal"`로 같은 계산을 해 보면 gene1349의 Wald stat은 −3.419이고 `LFC_shr / SE_shr`는 −3.142다. 후자로 2Φ(−|Z|)를 구하면 0.00168이지만 `results()`가 저장한 p는 0.000628이다. apeglm의 `lfcSE`는 소스에서 `fit$sd`(posterior SD)를 넣고 설명도 "posterior SD"로 바꾸므로 Wald SE가 아니다. normal의 `lfcSE`는 posterior SD도 아닌 벌점 추정치의 SE(sandwich SE)지만(실험 1), 결론은 같다. 두 수를 나눈 것은 정의된 검정통계량이 아니다.
+먼저 Z를 다시 만들면 안 돼요. 실행할 수 있는 `type = "normal"`로 같은 계산을 해 보면 gene1349의 Wald stat은 −3.419이고 `LFC_shr / SE_shr`는 −3.142예요. 후자로 2Φ(−|Z|)를 구하면 0.00168이지만 `results()`가 저장한 p는 0.000628이에요. apeglm의 `lfcSE`는 소스에서 `fit$sd`(posterior SD)를 넣고 설명도 "posterior SD"로 바꾸니 Wald SE가 아니에요. normal의 `lfcSE`는 posterior SD도 아닌 벌점 추정치의 SE(sandwich SE)지만(실험 1), 결론은 같아요. 두 수를 나눈 값은 정의된 검정통계량이 아니에요.
 
-둘째, ashr의 점추정치는 MAP가 아니라 posterior mean이다(`res$log2FoldChange <- fit$result$PosteriorMean`, 라벨 "MMSE"). posterior mode(MAP)를 돌려주는 것은 apeglm과 normal이다.
+그리고 ashr의 점추정치는 MAP가 아니라 posterior mean이에요(`res$log2FoldChange <- fit$result$PosteriorMean`, 라벨 "MMSE"). posterior mode(MAP)를 돌려주는 건 apeglm과 normal이에요.
 
-교재 부록 B의 결론과 일치한다. 다만 이유로 든 "shrinkage의 lfcSE는 posterior SD"는 apeglm과 ashr에만 맞고 normal에는 맞지 않는다.
+결론은 교재 부록 B와 같아요. 다만 이유로 든 "shrinkage의 lfcSE는 posterior SD"는 apeglm과 ashr에만 맞고 normal에는 맞지 않아요.
 
 </details>
 
 ## 더 깊이 보기
 
 <details>
-<summary>이 노트의 위치와 재현 환경</summary>
+<summary>교재와의 대응, 재현 환경</summary>
 
-- 교재 대응: 13장. 본문 절과 교재 절의 대응은 1–2절 ↔ 13.1–13.2, 3절 ↔ 13.3, 4절 ↔ 13.2의 contrast 부분, 5절 ↔ 13.5, 6절 ↔ 13.4와 13.6이다.
-- 검증 환경: R 4.5.2 · DESeq2 1.50.2 · 2026-09-26.
-- dispersion의 shrinkage는 [03_dispersion_estimation.md](03_dispersion_estimation.md), 다중검정과 independent filtering은 [06_multiple_testing.md](06_multiple_testing.md)에서 다룬다.
-- 아래 실험 블록의 각 `r` 블록은 그대로 실행했고, 바로 아래 블록이 그 출력이다. 실험 4와 6은 실험 1의 R 세션에 이어서 실행했다(`dds`, `res`, `shr`, `d`, `pick`을 다시 쓴다). 본문 1–3절의 모의 데이터 코드(gene1349)와 minmu 블록은 한 세션에서 이어서 실행했다. 유전자 A 코드와 그림 코드는 각각 따로 실행했다(그림 코드는 `notes/` 폴더에서 실행).
+본문 절과 교재 13장의 대응은 1–2절 ↔ 13.1–13.2, 3절 ↔ 13.3, 4절 ↔ 13.2의 contrast 부분, 5절 ↔ 13.5, 6절 ↔ 13.4와 13.6이에요. dispersion의 shrinkage는 [03_dispersion_estimation.md](03_dispersion_estimation.md), 다중검정과 independent filtering은 [06_multiple_testing.md](06_multiple_testing.md)에서 다뤄요.
 
-설치 상태와 signature:
+코드는 R 4.5.2, DESeq2 1.50.2로 2026-09-26에 돌렸어요. 아래 실험의 `r` 블록은 모두 그대로 실행했고, 바로 아래 블록이 그 출력이에요. 실험 4와 6은 실험 1의 R 세션에 이어서 실행했어요(`dds`, `res`, `shr`, `d`, `pick`을 다시 써요). 본문 1–3절의 모의 데이터 코드(gene1349)와 minmu 블록은 한 세션에서 이어서 실행했고, 유전자 A 코드와 그림 코드는 각각 따로 실행했어요(그림 코드는 `notes/` 폴더에서 실행).
+
+설치 상태와 함수 signature는 이렇게 확인했어요.
 
 ```r
 suppressPackageStartupMessages(library(DESeq2))
@@ -496,14 +484,14 @@ NULL
                          "0.05"
 ```
 
-apeglm, ashr가 없으므로 이 노트의 모든 실행은 `type="normal"`이다. apeglm/ashr에 대한 주장은 `lfcShrink` 소스와 도움말로만 확인한다.
+apeglm과 ashr가 없으니 이 노트의 실행은 모두 `type="normal"`이에요. apeglm/ashr에 대한 이야기는 `lfcShrink` 소스와 도움말로만 확인했어요.
 
 </details>
 
 <details>
-<summary>교재 예시 코드를 그대로 불러 보면: apeglm/ashr는 설치 검사에서 멈춘다</summary>
+<summary>교재 예시 코드를 그대로 불러 보면: apeglm과 ashr는 설치 검사에서 멈춰요</summary>
 
-교재 13.2의 `lfcShrink(dds, coef="condition_Starvation_vs_Ctrl", type="apeglm")`를 같은 계수 이름이 나오도록 만든 합성 데이터 (Ctrl reference, Starvation, Glucose 각 3)에서 실행했다. `type`을 생략한 호출, `contrast` 호출, `type="ashr"`도 함께 부른다.
+교재 13.2의 `lfcShrink(dds, coef="condition_Starvation_vs_Ctrl", type="apeglm")`를, 같은 계수 이름이 나오도록 만든 합성 데이터(Ctrl reference, Starvation, Glucose 각 3)에서 실행했어요. `type`을 생략한 호출, `contrast` 호출, `type="ashr"`도 함께 불러 봤어요.
 
 ```r
 suppressPackageStartupMessages(library(DESeq2)); options(width = 120)
@@ -536,14 +524,16 @@ contrast, type="ashr"                -> Error: type='ashr' requires installing t
 coef, type="normal"                  -> ran, 500 rows
 ```
 
-세 가지를 읽는다. (1) 교재의 계수 이름 `condition_Starvation_vs_Ctrl`은 실제로 `resultsNames()`에 있고, 교재 예시 호출은 이름 문제가 아니라 apeglm 미설치로 멈춘다. (2) `type`의 기본값은 `"apeglm"`이라 (`match.arg`, 12행) `type`을 생략해도 같은 오류가 난다. 이 환경에서 shrinkage를 돌리려면 `type="normal"`을 명시해야 한다. (3) `contrast` + apeglm은 소스상 "only for use with 'coef'"로 거부되지만 (170–171행), 설치 검사 (167–168행)가 먼저라 이 환경에서는 설치 메시지만 보인다. 즉 "apeglm은 coef 만"은 여기서 실행으로 관찰한 것이 아니라 소스로 확인한 것이다. ashr는 `coef`, `contrast` 둘 다 283–284행의 설치 검사에서 멈춘다. 교재 15.1의 "설치 여부에 따라 선택적 부분은 건너뛰고 메시지를 남긴다"는 `DESeq2_workbook.R`에 대한 설명이고 (그 파일은 저장소에 없어 실행하지 않았다), `lfcShrink()` 자체는 건너뛰지 않고 `stop()` 한다. 건너뛰려면 호출하는 쪽이 `requireNamespace()`로 먼저 분기해야 한다.
+결과에서 읽을 수 있는 건 세 가지예요. 우선 교재의 계수 이름 `condition_Starvation_vs_Ctrl`은 실제로 `resultsNames()`에 있어요. 교재 예시 호출이 멈추는 건 이름 때문이 아니라 apeglm이 설치되지 않아서예요. 다음으로 `type`의 기본값이 `"apeglm"`이라서(`match.arg`, 12행) `type`을 생략해도 같은 오류가 나요. 이 환경에서 shrinkage를 돌리려면 `type="normal"`을 꼭 적어야 해요. 마지막으로 `contrast` + apeglm은 소스상 "only for use with 'coef'"로 거부되지만(170–171행), 설치 검사(167–168행)가 먼저라 이 환경에서는 설치 메시지만 보여요. 그러니 "apeglm은 coef만"은 실행으로 관찰한 게 아니라 소스로 확인한 거예요. ashr는 `coef`, `contrast` 둘 다 283–284행의 설치 검사에서 멈춰요.
+
+교재 15.1의 "설치 여부에 따라 선택적 부분은 건너뛰고 메시지를 남긴다"는 `DESeq2_workbook.R`에 대한 설명이에요(그 파일은 저장소에 없어서 실행하지 못했어요). `lfcShrink()` 자체는 건너뛰지 않고 `stop()`해요. 건너뛰려면 호출하는 쪽에서 `requireNamespace()`로 먼저 분기해야 해요.
 
 </details>
 
 <details>
-<summary>한 그룹이 모두 0일 때 MLE는 어디서 멈추나 (minmu)</summary>
+<summary>한 그룹이 모두 0일 때 MLE는 어디서 멈출까? (minmu)</summary>
 
-본문 1절의 코드에 이어서 실행했다. `minmu`는 도움말의 설명대로 "lower bound on the estimated count while fitting the GLM"이고, `nbinomWaldTest()`의 기본값은 0.5다.
+본문 1절의 코드에 이어서 실행했어요. `minmu`는 도움말 설명대로 "lower bound on the estimated count while fitting the GLM"이고, `nbinomWaldTest()`의 기본값은 0.5예요.
 
 ```r
 for (mm in c(0.5, 0.1, 0.01)) {                      # minmu: GLM 적합 중 기대 count의 하한 (기본 0.5)
@@ -559,24 +549,24 @@ minmu 0.1 | gene1349 LFC -8.13 SE 2.904 | gene2055 LFC 2.0626
 minmu 0.01 | gene1349 LFC -11.452 SE 8.418 | gene2055 LFC 2.0626
 ```
 
-gene1349(B가 0, 0, 0)의 LFC와 SE는 하한에 따라 계속 커진다. 유한한 MLE가 없어서 계산이 하한에 기대어 멈추기 때문이다. 두 그룹 모두 count가 많은 gene2055는 하한과 무관하게 2.0626이다.
+gene1349(B가 0, 0, 0)의 LFC와 SE는 하한을 낮출수록 계속 커져요. 유한한 MLE가 없어서 계산이 하한에 기대어 멈추기 때문이에요. 두 그룹 모두 count가 많은 gene2055는 하한과 상관없이 2.0626이에요.
 
 </details>
 
 <details>
 <summary>수식 세부: normal prior, lfcSE, apeglm/ashr, s-value, Cook's cutoff, VST</summary>
 
-이 노트의 기호는 부록 C를 따른다. 단 Cook's distance는 부록 C의 LRT 통계량 $D$와 겹치지 않도록 $\mathrm{Cook}_{ij}$로 쓴다. sample 수 $n$과 계수 수 $p$는 교재 4.5의 기호다 (p 값과는 다른 기호이고, DESeq2 소스는 sample 수를 `m`으로 쓴다).
+이 노트의 기호는 부록 C를 따라요. 단 Cook's distance는 부록 C의 LRT 통계량 $D$와 겹치지 않도록 $\mathrm{Cook}_{ij}$로 써요. sample 수 $n$과 계수 수 $p$는 교재 4.5의 기호예요(p 값과는 다른 기호이고, DESeq2 소스는 sample 수를 `m`으로 써요).
 
-**normal prior의 LFC MAP.** gene $i$의 log2 계수 $\beta$에 $\beta_k \sim N(0, \sigma_k^2)$를 두면 posterior log objective는
+normal prior의 LFC MAP부터 볼게요. gene $i$의 log2 계수 $\beta$에 $\beta_k \sim N(0, \sigma_k^2)$를 두면 posterior log objective는
 
 $$
 \ell(\beta) - \sum_k \frac{\beta_k^2}{2\sigma_k^2}
 $$
 
-이고 이를 최대화하는 $\hat\beta_{MAP}$가 반환된다. 구현은 `nbinomWaldTest(betaPrior=TRUE, betaPriorVar=...)`의 ridge-penalized IRLS다. prior 분산 $\sigma_k^2$는 log2 척도이고 IRLS는 자연로그 계수 $b = \beta \ln 2$로 돌기 때문에, $b$에 걸리는 penalty는 $\Lambda = \mathrm{diag}\big(1/(\sigma_k^2 \ln^2 2)\big)$다 (실험 1의 재계산은 이 척도로 했고 반환값과 소수 4 자리까지 일치했다). $\sigma_k^2$는 `estimateBetaPriorVar()`가 추정한다. 기본 `betaPriorMethod="weighted"`로, allZero 유전자와 $|\hat\beta| \ge 10$을 빼고 가중치 $1/\{1/\bar q_i + \alpha_{tr}(\bar q_i)\}$ (`1/(1/baseMean + dispFit)`)를 준 MLE $\hat\beta$의 weighted upper quantile (`upperQuantile=0.05`)에 맞춘 normal 분산이다. Intercept는 $10^6$으로 사실상 prior가 없다. expanded model matrix (`contrast=` 경로)에서는 `averagePriorsOverLevels()`로 level 간 평균을 써서 모든 level이 같은 분산을 갖는다 (실험 2의 1.195). 정보가 많은 유전자는 $\ell$의 곡률이 커서 penalty가 상대적으로 작고, 저발현 유전자는 $\ell$이 평평해서 0 쪽으로 크게 끌린다.
+이고, 이걸 최대화하는 $\hat\beta_{MAP}$가 반환돼요. 구현은 `nbinomWaldTest(betaPrior=TRUE, betaPriorVar=...)`의 ridge-penalized IRLS예요. prior 분산 $\sigma_k^2$는 log2 척도인데 IRLS는 자연로그 계수 $b = \beta \ln 2$로 돌기 때문에, $b$에 걸리는 penalty는 $\Lambda = \mathrm{diag}\big(1/(\sigma_k^2 \ln^2 2)\big)$예요(실험 1의 재계산은 이 척도로 했고, 반환값과 소수 넷째 자리까지 같았어요). $\sigma_k^2$는 `estimateBetaPriorVar()`가 추정해요. 기본 `betaPriorMethod="weighted"`에서는 allZero 유전자와 $|\hat\beta| \ge 10$을 빼고, 가중치 $1/\{1/\bar q_i + \alpha_{tr}(\bar q_i)\}$(`1/(1/baseMean + dispFit)`)를 준 MLE $\hat\beta$의 weighted upper quantile(`upperQuantile=0.05`)에 맞춘 normal 분산을 써요. Intercept는 $10^6$이라 사실상 prior가 없어요. expanded model matrix(`contrast=` 경로)에서는 `averagePriorsOverLevels()`로 level 간 평균을 내서 모든 level이 같은 분산을 가져요(실험 2의 1.195). 정보가 많은 유전자는 $\ell$의 곡률이 커서 penalty가 상대적으로 작고, 저발현 유전자는 $\ell$이 평평해서 0 쪽으로 크게 끌려요.
 
-반환되는 `lfcSE`는 MAP에서의 $W$로 만든 sandwich 형태다 ($\log_2$ 척도로 $1/\ln 2$를 곱한다).
+반환되는 `lfcSE`는 MAP에서의 $W$로 만든 sandwich 형태예요($\log_2$ 척도로 바꾸려고 $1/\ln 2$를 곱해요).
 
 $$
 \mathrm{lfcSE}_{normal} = \frac{1}{\ln 2}\sqrt{\left[(X^TWX+\Lambda)^{-1}\,X^TWX\,(X^TWX+\Lambda)^{-1}\right]_{kk}}
@@ -584,31 +574,33 @@ $$
 \frac{1}{\ln 2}\sqrt{\left[(X^TWX+\Lambda)^{-1}\right]_{kk}} \;(\text{Laplace posterior SD})
 $$
 
-**apeglm.** `?lfcShrink`는 "adaptive Student's t prior shrinkage estimator"라고 쓰고, 참고문헌 제목은 "Heavy-tailed prior distributions ..." (Zhu et al. 2018)이다. 이 prior 아래 posterior mode를 구한다 (`fit$map`). heavy tail 덕분에 큰 effect는 덜 눌린다. prior가 정확히 Cauchy (자유도 1의 t) 인지는 apeglm이 설치되어 있지 않아 확인하지 못했다. **ashr.** $\hat\beta \mid \beta \sim N(\beta, \widehat{SE}^2)$에 $\beta \sim \sum_k \pi_k N(0, \tau_k^2)$ mixture prior를 두고 $\pi_k$를 데이터에서 추정한 뒤 posterior mean을 반환한다. `lfcShrink`는 `ashr::ash(..., method = "shrink")`로 부르는데, ashr 소스 (GitHub `R/ash.R`, 로컬 미설치)에서 `method == "shrink"`는 `pointmass = FALSE; prior = "uniform"`이라 0에 point mass가 없다.
+apeglm은 `?lfcShrink`에서 "adaptive Student's t prior shrinkage estimator"라고 설명하고, 참고문헌 제목은 "Heavy-tailed prior distributions ..." (Zhu et al. 2018)예요. 이 prior 아래에서 posterior mode를 구해요(`fit$map`). heavy tail 덕분에 큰 effect는 덜 눌려요. prior가 정확히 Cauchy(자유도 1의 t)인지는 apeglm이 설치되어 있지 않아 확인하지 못했어요.
 
-**lfsr와 s-value.** posterior가 주어지면 local false sign rate는 $\mathrm{lfsr}_i = \min\{P(\beta_i \ge 0 \mid K), P(\beta_i \le 0 \mid K)\}$다 (Stephens 2017의 정의. 0에 확률 질량이 있으면 등호가 중요하다). s-value는 lfsr 오름차순으로 정렬한 뒤의 누적 평균이다: $s_{(r)} = \frac{1}{r}\sum_{u \le r} \mathrm{lfsr}_{(u)}$.
+ashr는 $\hat\beta \mid \beta \sim N(\beta, \widehat{SE}^2)$에 $\beta \sim \sum_k \pi_k N(0, \tau_k^2)$ mixture prior를 두고, $\pi_k$를 데이터에서 추정한 뒤 posterior mean을 돌려줘요. `lfcShrink`는 `ashr::ash(..., method = "shrink")`로 부르는데, ashr 소스(GitHub `R/ash.R`, 로컬 미설치)에서 `method == "shrink"`는 `pointmass = FALSE; prior = "uniform"`이라 0에 point mass가 없어요.
 
-**Cook's distance (DESeq2 구현).** 계수 수 $p$, hat matrix 대각 $h_{jj}$, robust method-of-moments dispersion $\tilde\alpha_i$에 대해
+lfsr와 s-value도 정의해 둘게요. posterior가 주어지면 local false sign rate는 $\mathrm{lfsr}_i = \min\{P(\beta_i \ge 0 \mid K), P(\beta_i \le 0 \mid K)\}$예요(Stephens 2017의 정의. 0에 확률 질량이 있으면 등호가 중요해요). s-value는 lfsr을 오름차순으로 정렬한 뒤의 누적 평균 $s_{(r)} = \frac{1}{r}\sum_{u \le r} \mathrm{lfsr}_{(u)}$로 정의해요.
+
+Cook's distance는 DESeq2 구현 기준으로 계수 수 $p$, hat matrix 대각 $h_{jj}$, robust method-of-moments dispersion $\tilde\alpha_i$를 써서 이렇게 계산해요.
 
 $$
 V_{ij} = \mu_{ij} + \tilde\alpha_i \mu_{ij}^2, \qquad
 \mathrm{Cook}_{ij} = \frac{(K_{ij} - \mu_{ij})^2}{V_{ij}} \cdot \frac{1}{p} \cdot \frac{h_{jj}}{(1-h_{jj})^2}
 $$
 
-기본 cutoff는 $F_{0.99}(p,\; n-p)$이다 (소스의 `qf(0.99, p, m - p)`). $n=6, p=2$이면 18, $n=5, p=2$이면 30.82, $n=14, p=2$이면 6.93이다.
+기본 cutoff는 $F_{0.99}(p,\; n-p)$예요(소스의 `qf(0.99, p, m - p)`). $n=6, p=2$이면 18, $n=5, p=2$이면 30.82, $n=14, p=2$이면 6.93이에요.
 
-**VST (parametric trend).** trend $\alpha_{tr}(x) = a_1/x + a_0$에 대해 `getVarianceStabilizedData`는
+마지막으로 VST(parametric trend)예요. trend $\alpha_{tr}(x) = a_1/x + a_0$에 대해 `getVarianceStabilizedData`는
 
 $$
 \mathrm{vst}(x) = \log_2\!\left( \frac{1 + a_1 + 2 a_0 x + 2\sqrt{a_0 x (1 + a_1 + a_0 x)}}{4 a_0} \right)
 $$
 
-를 관측 normalized count $x = K_{ij}/s_j$에 적용한다 (`extraPois` = $a_1$, `asymptDisp` = $a_0$). 부록 C의 $q_{ij}$는 기대값 $\mu_{ij}/s_j$ 이므로 여기서는 쓰지 않는다.
+를 관측 normalized count $x = K_{ij}/s_j$에 적용해요(`extraPois` = $a_1$, `asymptDisp` = $a_0$). 부록 C의 $q_{ij}$는 기대값 $\mu_{ij}/s_j$라서 여기서는 쓰지 않아요.
 
 </details>
 
 <details>
-<summary>세 가지 type 비교 (원래 표)</summary>
+<summary>세 가지 type 자세히 비교</summary>
 
 | `type=` | prior | 반환 점추정 | 반환 `lfcSE` | `coef` / `contrast` | 필요 패키지 |
 |---|---|---|---|---|---|
@@ -616,16 +608,16 @@ $$
 | `ashr` | adaptive mixture of normals | posterior **mean** (`PosteriorMean`, 라벨 "MMSE") | posterior SD (`PosteriorSD`) | `res`가 있으면 둘 다 무시, 아니면 `coef`/`contrast`로 `results()` 생성 | ashr (미설치) |
 | `normal` | $N(0,\sigma_\beta^2)$ | posterior **mode** (ridge-penalized IRLS) | penalized MAP 추정량의 sandwich SE (posterior SD 아님, 실험 1) | `coef` (standard model matrix) 또는 `contrast` (expanded model matrix) | DESeq2 내장 |
 
-"lfcShrink 결과는 모두 MAP"이라고 쓰면 ashr에서 틀린다. ashr는 posterior mean이다. 교재 13.2의 예시 (Ctrl reference, `condition_Starvation_vs_Ctrl`, Glucose − Starvation)는 실험 2에서 A=Ctrl, B=Starvation, C=Glucose로 바꿔 실행했다.
+셋 중 ashr만 posterior mean을 돌려준다는 점을 기억해 두세요. 교재 13.2의 예시(Ctrl reference, `condition_Starvation_vs_Ctrl`, Glucose − Starvation)는 실험 2에서 A=Ctrl, B=Starvation, C=Glucose로 바꿔 실행했어요.
 
 </details>
 
 <details>
-<summary>DESeq2 소스로 확인한 것: lfcShrink</summary>
+<summary>lfcShrink 소스에서 확인한 것</summary>
 
-아래 발췌 블록은 `deparse(DESeq2::함수)` 출력에서 줄 번호를 밝혀 발췌한 것이다(생략은 `...`). 실행용 코드가 아니다.
+아래 발췌는 `deparse(DESeq2::함수)` 출력에서 줄 번호를 밝혀 옮긴 거예요(생략한 곳은 `...`). 실행용 코드가 아니에요.
 
-`DESeq()`을 `betaPrior=FALSE` (기본)로 돌린 뒤에 쓴다. `resultsNames`가 비어 있을 때의 stop에는 예외가 있다: `type="apeglm"` + `apeAdapt=FALSE`이면 멈추지 않고 design에서 model matrix 열 이름을 만든다. `betaPrior=TRUE`로 돌린 객체는 type과 무관하게 stop이다.
+`lfcShrink()`는 `DESeq()`을 `betaPrior=FALSE`(기본)로 돌린 뒤에 써요. `resultsNames`가 비어 있으면 멈추는데, 예외가 하나 있어요. `type="apeglm"` + `apeAdapt=FALSE`이면 멈추지 않고 design에서 model matrix 열 이름을 만들어요. `betaPrior=TRUE`로 돌린 객체는 type과 상관없이 멈춰요.
 
 ```text
 # 발췌 (실행하지 않음)
@@ -648,7 +640,7 @@ $$
     }
 ```
 
-type 별 반환값과 라벨. normal은 `nbinomWaldTest(betaPrior=TRUE)`를 다시 돌린 결과에서 두 열 (또는 `lfcThreshold>0`이면 다섯 열)을 가져온다. apeglm은 `map`/`sd`, ashr는 `PosteriorMean`/`PosteriorSD`다.
+type별 반환값과 라벨은 이래요. normal은 `nbinomWaldTest(betaPrior=TRUE)`를 다시 돌린 결과에서 두 열(`lfcThreshold>0`이면 다섯 열)을 가져오고, apeglm은 `map`/`sd`, ashr는 `PosteriorMean`/`PosteriorSD`를 써요.
 
 ```text
 # 발췌 (실행하지 않음)
@@ -686,7 +678,7 @@ type 별 반환값과 라벨. normal은 `nbinomWaldTest(betaPrior=TRUE)`를 다�
             mcols(res)$description[3])
 ```
 
-`coef`/`contrast` 제약.
+`coef`/`contrast`에 대한 제약이에요.
 
 ```text
 # 발췌 (실행하지 않음)
@@ -707,7 +699,7 @@ type 별 반환값과 라벨. normal은 `nbinomWaldTest(betaPrior=TRUE)`를 다�
         }
 ```
 
-s-value 경로와 열 구성. apeglm과 ashr가 다르다.
+s-value 경로와 열 구성은 apeglm과 ashr가 서로 달라요.
 
 ```text
 # 발췌 (실행하지 않음)
@@ -760,20 +752,20 @@ s-value 경로와 열 구성. apeglm과 ashr가 다르다.
     }
 ```
 
-정리하면 다음과 같다.
+표로 정리하면 이래요.
 
 | type | `lfcThreshold=0`, `svalue=FALSE` (기본) | `svalue=TRUE` | `lfcThreshold>0` |
 |---|---|---|---|
 | normal | 6 열, `log2FoldChange`/`lfcSE`만 교체 (실험 1) | 오류 `object 'coefAlphaSpaces' not found` (실험 1) | `stat`/`pvalue`/`padj`까지 shrunken 적합의 threshold 검정으로 교체 (실험 2) |
 | apeglm | `baseMean, log2FoldChange, lfcSE, pvalue, padj` 5 열 (`stat` 제거) | `pvalue`/`padj` 제거, `svalue` 추가 | `svalue=TRUE`로 강제되어 `pvalue`/`padj` 제거, FSOS s-value 추가 |
-| ashr | 5 열 (`stat` 제거) | `pvalue`/`padj` 제거, `svalue` 추가 | 열을 빼지 않는다. MLE `stat`/`pvalue`/`padj`를 두고 FSOS `svalue`를 뒤에 붙인다 |
+| ashr | 5 열 (`stat` 제거) | `pvalue`/`padj` 제거, `svalue` 추가 | 열을 빼지 않음. MLE `stat`/`pvalue`/`padj`를 두고 FSOS `svalue`를 뒤에 붙임 |
 
-ashr + `lfcThreshold>0`은 도움말의 `svalue` 설명 ("should p-values and adjusted p-values be replaced with s-values")과 달리 p 값을 남긴다. 또 이 경로에서는 공통 블록이 4 번째 열 (`stat`)의 description을 "s-value: ..."로 덮어쓰는 것으로 읽힌다. ashr가 없어 두 가지 모두 실행으로 확인하지는 못했다.
+ashr + `lfcThreshold>0`은 도움말의 `svalue` 설명("should p-values and adjusted p-values be replaced with s-values")과 달리 p 값을 남겨요. 또 이 경로에서는 공통 블록이 4번째 열(`stat`)의 description을 "s-value: ..."로 덮어쓰는 것으로 읽혀요. 다만 ashr가 없어서 두 가지 모두 실행으로 확인하지는 못했어요.
 
 </details>
 
 <details>
-<summary>DESeq2 소스로 확인한 것: results()의 Cook's cutoff, NA 처리, betaConv</summary>
+<summary>results() 소스: Cook's cutoff, NA 처리, betaConv</summary>
 
 ```text
 # 발췌 (실행하지 않음)
@@ -809,9 +801,9 @@ ashr + `lfcThreshold>0`은 도움말의 `svalue` 설명 ("should p-values and ad
         res$pvalue[which(cooksOutlier)] <- NA
 ```
 
-`res$pvalue[which(cooksOutlier)] <- NA`이므로 Cook's outlier는 p만 NA가 되고 LFC/lfcSE/stat은 남는다. design 변수가 2-level factor 하나뿐이면 예외가 있다. Cook's가 가장 큰 sample의 count (`outCount`)보다 큰 count가 두 group을 합쳐 3개 이상이면 필터하지 않는다. 흔히 걸리는 경우는 자기 group 안에서는 튀는 값이지만 다른 group이 모두 더 큰 경우다 (실험 3-(a2): A의 400과 B의 1000, 1100, 950). "낮은 쪽 outlier만 봐준다"가 아니다. `results` 소스에 `betaConv`는 등장하지 않는다. 미수렴은 NA를 만들지 않고 `nbinomWaldTest`의 message ("rows did not converge in beta, labelled in mcols(object)\$betaConv")로만 알린다.
+`res$pvalue[which(cooksOutlier)] <- NA`이니까 Cook's outlier는 p만 NA가 되고 LFC/lfcSE/stat은 남아요. design 변수가 2-level factor 하나뿐이면 예외가 있어요. Cook's가 가장 큰 sample의 count(`outCount`)보다 큰 count가 두 group을 합쳐 3개 이상이면 필터하지 않아요. 흔히 걸리는 건 자기 group 안에서는 튀는 값인데 다른 group이 모두 더 큰 경우예요(실험 3-(a2): A의 400과 B의 1000, 1100, 950). 그러니 "낮은 쪽 outlier만 봐준다"는 뜻은 아니에요. `results` 소스에는 `betaConv`가 등장하지 않아요. 미수렴은 NA를 만들지 않고 `nbinomWaldTest`의 message("rows did not converge in beta, labelled in mcols(object)\$betaConv")로만 알려요.
 
-`betaConv`는 IRLS 만의 결과가 아니다. IRLS가 수렴하지 않거나 불안정한 행은 optim으로 다시 적합되고 `betaConv`는 optim 결과로 덮어써진다. 즉 `betaConv == FALSE`는 IRLS와 optim fallback이 모두 수렴하지 못했다는 뜻이다.
+`betaConv`는 IRLS만의 결과도 아니에요. IRLS가 수렴하지 않거나 불안정한 행은 optim으로 다시 적합되고, `betaConv`는 optim 결과로 덮어써져요. 그래서 `betaConv == FALSE`는 IRLS와 optim fallback이 모두 수렴하지 못했다는 뜻이에요.
 
 ```text
 # 발췌 (실행하지 않음)
@@ -835,14 +827,11 @@ ashr + `lfcThreshold>0`은 도움말의 `svalue` 설명 ("should p-values and ad
 </details>
 
 <details>
-<summary>실행으로 확인한 것: p까지 NA가 되는 경우 (β 미수렴과 weights, 부록 B 17)</summary>
+<summary>p까지 NA가 되는 경우: β 미수렴과 weights (부록 B 17)</summary>
 
-부록 B 17의 답은 p까지 NA인 원인으로 all-zero, count outlier, "fitting 문제"를 든다. 이 노트의 데이터에는 미수렴이 한 건도 없어서 "fitting 문제"는 일부러 만들어 확인했다. 두 경우로 나눴다.
+부록 B 17의 답은 p까지 NA인 원인으로 all-zero, count outlier, "fitting 문제"를 들어요. 이 노트의 데이터에는 미수렴이 한 건도 없어서, "fitting 문제"는 두 경우로 나눠 일부러 만들어 봤어요. (a)는 β 미수렴이에요. IRLS 반복을 2회로 끊고, optim 재적합을 켠 경우와 끈 경우를 모두 봐요. (b)는 weights 때문에 계수를 추정할 수 없는 경우예요. gene1에서 group B sample의 weight를 모두 0으로 두면 B의 평균을 추정할 정보가 없어져요.
 
-- (a) β 미수렴: IRLS 반복을 2회로 끊는다. optim 재적합을 켠 경우와 끈 경우를 모두 본다.
-- (b) weights 때문에 계수를 추정할 수 없는 경우: gene1에서 group B sample의 weight를 모두 0으로 둔다. 그러면 B의 평균을 추정할 정보가 없다.
-
-아래 두 블록은 이 노트의 다른 실험과 별도인 새 R 세션에서 실행했다.
+아래 두 블록은 이 노트의 다른 실험과 별도인 새 R 세션에서 실행했어요.
 
 ```r
 suppressPackageStartupMessages(library(DESeq2))
@@ -894,19 +883,20 @@ DataFrame with 1 row and 6 columns
 gene1   2.51101             NA        NA        NA        NA        NA
 ```
 
-- (a) 기본 적합에서는 미수렴이 0건이다. optim 재적합을 켜 두면 IRLS와 optim이 모두 실패한 3개가 남고, 이 3개의 추정치는 기본 적합과 $5\times10^{-8}$ 이내로 같다. optim을 끄면 992개가 미수렴이고 log2FC가 최대 11.7 어긋난다. 두 경우 모두 미수렴 행의 p는 NA가 아니다. p가 NA인 8개는 모두 all-zero 행이다. 미수렴은 틀릴 수 있는 추정치에 멀쩡해 보이는 p를 붙이므로 NA로는 드러나지 않는다. `mcols(dds)$betaConv`를 직접 봐야 한다.
-- (b) `getAndCheckWeights()`는 weights 때문에 design이 퇴화한 행을 `weightsFail`로 표시하고 `allZero`를 TRUE로 바꾼다(아래 소스 검색의 33–34행). 그래서 gene1은 count가 0이 아니고 baseMean도 2.51인데 log2FoldChange부터 padj까지 모두 NA다. 교재의 "fitting 문제" 가운데 계수를 아예 추정할 수 없는 이 경우만 p를 NA로 만든다.
+(a)부터 보면, 기본 적합에서는 미수렴이 0건이에요. optim 재적합을 켜 두면 IRLS와 optim이 모두 실패한 3개가 남는데, 이 3개의 추정치는 기본 적합과 $5\times10^{-8}$ 이내로 같아요. optim을 끄면 992개가 미수렴이고 log2FC가 최대 11.7 어긋나요. 그런데 두 경우 모두 미수렴 행의 p는 NA가 아니에요. p가 NA인 8개는 모두 all-zero 행이고요. 미수렴은 틀릴 수 있는 추정치에 멀쩡해 보이는 p를 붙이니까 NA로는 드러나지 않아요. `mcols(dds)$betaConv`를 직접 봐야 해요.
 
-정리하면 다음과 같다.
+(b)에서는 `getAndCheckWeights()`가 weights 때문에 design이 퇴화한 행을 `weightsFail`로 표시하고 `allZero`를 TRUE로 바꿔요(아래 소스 검색의 33–34행). 그래서 gene1은 count가 0이 아니고 baseMean도 2.51인데 log2FoldChange부터 padj까지 모두 NA예요. 교재의 "fitting 문제" 가운데 p를 NA로 만드는 건 계수를 아예 추정할 수 없는 이 경우뿐이에요.
+
+표로 정리하면 이래요.
 
 | 원인 | baseMean | log2FoldChange · lfcSE · stat | pvalue | 확인할 열 | 교재 부록 B 17 |
 |---|---|---|---|---|---|
 | all-zero | 0 | NA | NA | `allZero` | 일치 |
 | Cook's outlier | > 0 | 값 있음 | NA | `maxCooks` | 일치 (실험 3-(a)) |
 | weights로 design 퇴화 | > 0 | NA | NA | `weightsFail`, `allZero` | 일치 ("fitting 문제" 중 추정 불가) |
-| β 미수렴 | > 0 | 값 있음 (신뢰할 수 없음) | 값 있음 | `betaConv` | 불일치 (p는 NA가 아니다) |
+| β 미수렴 | > 0 | 값 있음 (신뢰할 수 없음) | 값 있음 | `betaConv` | 불일치 (p는 NA가 아님) |
 
-위 발췌 블록만으로는 이 경로 말고 NA를 넣는 곳이 더 없다는 것을 보일 수 없다. 그래서 `results()`와 p를 만드는 함수 전체를 `deparse()`하고, `NA`, `betaConv`, p 대입이 들어간 줄을 모두 찾았다. 줄 번호는 기본 `deparse()`의 줄 번호다.
+그런데 위 발췌만으로는 이 경로 말고 NA를 넣는 곳이 더 없다고 말할 수 없어요. 그래서 `results()`와 p를 만드는 함수 전체를 `deparse()`하고, `NA`, `betaConv`, p 대입이 들어간 줄을 모두 찾아봤어요. 줄 번호는 기본 `deparse()`의 줄 번호예요.
 
 ```r
 suppressPackageStartupMessages(library(DESeq2))
@@ -977,22 +967,22 @@ getAndCheckWeights (48줄): 33, 34
    34: weightsDF <- DataFrame(weightsFail = !weights.ok)
 ```
 
-- `results()`에서 p에 값을 넣는 줄은 네 곳이다. 119행은 저장된 p를 꺼내고, 160–211행은 `lfcThreshold`와 `altHypothesis`에 따라 LFC와 SE로 p를 다시 계산한다. 246행은 Cook's outlier에 NA를 넣고, 257행은 outlier 교체 뒤 baseMean이 0이 된 행에 1을 넣는다. NA를 직접 넣는 줄은 246행 하나이고, `betaConv`는 290줄 어디에도 없다. `getPvalue()`에는 해당하는 줄이 없고, `cleanContrast()`는 비교하는 두 group이 모두 0인 행에 1을 넣을 뿐이다(191행).
-- `getContrast()` 53–54행, `nbinomWaldTest()` 164행, `nbinomLRT()` 159행은 NA로 채울 행을 `allZero` 하나로 정한다. `getAndCheckWeights()` 33–34행이 weights로 design이 퇴화한 행의 `allZero`를 TRUE로 바꾸므로, (b)의 행도 이 경로로 NA가 된다.
-- 나머지 p 식(`getContrast()` 45·49행, `nbinomWaldTest()` 140·143행, `nbinomLRT()` 79행)은 통계량에서 p를 계산할 뿐이다. 통계량이나 자유도가 NA일 때만 p도 NA가 된다. `nbinomWaldTest()` 138행(`df <- ifelse(df > 0, df, NA)`)이 그런 경우인데, 기본값이 아닌 `useT=TRUE` 분기 안에 있고 실행하지는 않았다. (a)에서 p가 NA인 행은 세 적합 모두 8개로 all-zero 수와 같았다.
-- `nbinomLRT()` 120–135행은 glmGamPoi 분기이고, 거기서는 `betaConv`를 모두 TRUE로 둔다. 나머지 `betaConv` 줄은 메시지를 내거나 `mcols` 열에 저장하는 줄이다. LRT의 미수렴은 소스로만 확인했다.
+- `results()`에서 p에 값을 넣는 줄은 네 곳이에요. 119행은 저장된 p를 꺼내고, 160–211행은 `lfcThreshold`와 `altHypothesis`에 따라 LFC와 SE로 p를 다시 계산해요. 246행은 Cook's outlier에 NA를 넣고, 257행은 outlier 교체 뒤 baseMean이 0이 된 행에 1을 넣어요. NA를 직접 넣는 줄은 246행 하나뿐이고, `betaConv`는 290줄 어디에도 없어요. `getPvalue()`에는 해당하는 줄이 없고, `cleanContrast()`는 비교하는 두 group이 모두 0인 행에 1을 넣을 뿐이에요(191행).
+- `getContrast()` 53–54행, `nbinomWaldTest()` 164행, `nbinomLRT()` 159행은 NA로 채울 행을 `allZero` 하나로 정해요. `getAndCheckWeights()` 33–34행이 weights로 design이 퇴화한 행의 `allZero`를 TRUE로 바꾸니까, (b)의 행도 이 경로로 NA가 돼요.
+- 나머지 p 식(`getContrast()` 45·49행, `nbinomWaldTest()` 140·143행, `nbinomLRT()` 79행)은 통계량에서 p를 계산할 뿐이라, 통계량이나 자유도가 NA일 때만 p도 NA가 돼요. `nbinomWaldTest()` 138행(`df <- ifelse(df > 0, df, NA)`)이 그런 경우인데, 기본값이 아닌 `useT=TRUE` 분기 안에 있고 실행해 보지는 않았어요. (a)에서 p가 NA인 행은 세 적합 모두 8개로 all-zero 수와 같았어요.
+- `nbinomLRT()` 120–135행은 glmGamPoi 분기이고, 거기서는 `betaConv`를 모두 TRUE로 둬요. 나머지 `betaConv` 줄은 메시지를 내거나 `mcols` 열에 저장하는 줄이에요. LRT의 미수렴은 소스로만 확인했어요.
 
 </details>
 
 <details>
-<summary>DESeq2 소스로 확인한 것: results(contrast=)는 재적합하지 않는다</summary>
+<summary>results(contrast=)는 계수를 다시 적합할까?</summary>
 
-`getContrast()`는 `fitBeta(..., maxitSEXP = 0)`으로 계수를 다시 적합하지 않고 $c^\top\hat b$와 $\sqrt{c^\top\hat\Sigma c}$만 계산한다 (발췌와 covariance 재현은 [04](04_glm_condition_batch.md) 노트의 contrast 부분). `cleanContrast()`는 비교하는 두 group이 모두 0이고 전체 all-zero는 아닌 유전자의 LFC·stat을 0, p를 1로 덮어쓴다 (실행한 발췌는 [06](06_multiple_testing.md) 구현 확인). 그래서 MLE contrast는 계수의 차와 정확히 같고, 예외는 비교하는 두 group이 모두 0인 유전자뿐이다 (실험 2).
+다시 적합하지 않아요. `getContrast()`는 `fitBeta(..., maxitSEXP = 0)`으로 부르기 때문에 계수는 그대로 두고 $c^\top\hat b$와 $\sqrt{c^\top\hat\Sigma c}$만 계산해요(발췌와 covariance 재현은 [04](04_glm_condition_batch.md) 노트의 contrast 부분에 있어요). `cleanContrast()`는 비교하는 두 group이 모두 0이고 전체 all-zero는 아닌 유전자의 LFC·stat을 0, p를 1로 덮어써요(실행한 발췌는 [06](06_multiple_testing.md)의 구현 확인에 있어요). 그래서 MLE contrast는 계수의 차와 정확히 같고, 예외는 비교하는 두 group이 모두 0인 유전자뿐이에요(실험 2).
 
 </details>
 
 <details>
-<summary>DESeq2 소스로 확인한 것: DESeq()의 replacement 조건과 maxCooks의 정의</summary>
+<summary>DESeq()의 replacement 조건과 maxCooks의 정의 (소스)</summary>
 
 ```text
 # 발췌 (실행하지 않음)
@@ -1059,12 +1049,12 @@ function (design, colData, modelMatrix, cooks, numRow)
         assays(object)[["originalCounts"]] <- NULL
 ```
 
-세 규칙이 나온다. (1) 셀에 3개 이상 있는 sample만 `maxCooks` 계산에 들어간다. 그런 sample이 하나도 없으면 (2 vs 2, 셀당 1개인 paired design) `maxCooks`가 전부 NA라서 Cook's 필터 자체가 없다. 3 vs 2처럼 섞여 있으면 3개짜리 group의 sample에서만 판정하고, 2개짜리 group의 큰 Cook's는 무시된다 (실험 3-(e)). (2) 7개 이상인 셀이 하나라도 있으면 그 셀 sample의 outlier count를 trimmed mean × size factor로 바꿔 재적합하고, 모든 sample이 교체 가능하면 이후 `results()`의 Cook's 필터도 꺼진다. (3) `~pair+condition` 같은 paired design은 model matrix의 행이 sample마다 달라서 셀 크기가 모두 1이므로 (1)에 걸린다. 교재의 "모든 paired design에서 항상 일어나는 일처럼 설명하지 않는다"는 문장은 이 규칙과 일치한다.
+여기서 규칙 세 가지가 나와요. 첫째, 셀에 3개 이상 있는 sample만 `maxCooks` 계산에 들어가요. 그런 sample이 하나도 없으면(2 vs 2, 셀당 1개인 paired design) `maxCooks`가 전부 NA라서 Cook's 필터 자체가 없어요. 3 vs 2처럼 섞여 있으면 3개짜리 group의 sample에서만 판정하고, 2개짜리 group의 큰 Cook's는 무시돼요(실험 3-(e)). 둘째, 7개 이상인 셀이 하나라도 있으면 그 셀 sample의 outlier count를 trimmed mean × size factor로 바꿔 재적합하고, 모든 sample이 교체 가능하면 이후 `results()`의 Cook's 필터도 꺼져요. 셋째, `~pair+condition` 같은 paired design은 model matrix의 행이 sample마다 달라 셀 크기가 모두 1이라서 첫째 규칙에 걸려요. 교재의 "모든 paired design에서 항상 일어나는 일처럼 설명하지 않는다"는 문장은 이 규칙과 맞아요.
 
 </details>
 
 <details>
-<summary>DESeq2 소스로 확인한 것: VST, vst, plotCounts, plotPCA</summary>
+<summary>VST, vst, plotCounts, plotPCA 소스</summary>
 
 ```text
 # 발췌 (실행하지 않음)
@@ -1106,12 +1096,12 @@ function (design, colData, modelMatrix, cooks, numRow)
         else 0
 ```
 
-`plotPCA`의 DESeqTransform method 기본값은 `intgroup = "condition", ntop = 500, returnData = FALSE`다.
+`plotPCA`의 DESeqTransform method 기본값은 `intgroup = "condition", ntop = 500, returnData = FALSE`예요.
 
 </details>
 
 <details>
-<summary>실험 1. 저발현·큰 MLE·큰 SE 유전자의 shrink 전후 (type="normal")</summary>
+<summary>실험 1. 저발현이면서 MLE와 SE가 큰 유전자는 shrink하면 어떻게 될까? (type="normal")</summary>
 
 ```r
 suppressPackageStartupMessages(library(DESeq2)); options(width = 120)
@@ -1167,13 +1157,13 @@ gene80    786.300   2.436 0.3431  2.2680 0.3193  7.099 1.254e-12 6.973e-10      
 fold = 2^|LFC_shr| (앞 3 개): 3.91 3.7 3.29 | 2*pnorm(-|Z_recomputed|) (gene1349): 0.00168
 ```
 
-`log2FoldChange` 라벨만 MLE → MAP로 바뀌고 `lfcSE` 라벨은 normal에서 "standard error" 그대로다 (apeglm/ashr는 소스가 "posterior SD"로 고쳐 쓴다). `pvalue`, `padj`는 값까지 동일하다. `svalue=TRUE`를 normal과 함께 주면 소스 공통 블록 (320–323행)이 정의되지 않은 `coefAlphaSpaces`를 참조해 오류가 난다.
+라벨을 보면 `log2FoldChange`만 MLE → MAP로 바뀌고, `lfcSE` 라벨은 normal에서 "standard error" 그대로예요(apeglm/ashr는 소스가 "posterior SD"로 고쳐 써요). `pvalue`, `padj`는 값까지 같아요. `svalue=TRUE`를 normal과 함께 주면 소스 공통 블록(320–323행)이 정의되지 않은 `coefAlphaSpaces`를 참조해서 오류가 나요.
 
-`baseMean < 5`, $|\hat\beta_{MLE}| > 3$, $SE > 1$ 인 유전자 81개 중 $|\hat\beta_{MLE}|$ 상위 4개와, `baseMean > 500`·$|\hat\beta_{MLE}| > 2$ 중 SE가 가장 작은 2개를 골랐다. `stat`은 MLE Wald 통계량이고, `Z_recomputed = LFC_shr / SE_shr`는 해서는 안 되는 계산을 일부러 해 본 것이다.
+표에 뽑은 유전자는 `baseMean < 5`, $|\hat\beta_{MLE}| > 3$, $SE > 1$인 81개 중 $|\hat\beta_{MLE}|$ 상위 4개와, `baseMean > 500`·$|\hat\beta_{MLE}| > 2$ 중 SE가 가장 작은 2개예요. `stat`은 MLE Wald 통계량이고, `Z_recomputed = LFC_shr / SE_shr`는 해서는 안 되는 계산을 일부러 해 본 거예요.
 
-해석: MLE가 |LFC| 5.5–5.8 (44–56배, 교재의 "log2FC 5 = 32배"보다 큰 값) 이던 저발현 유전자는 LFC −1.7 ~ −2.0, 즉 약 3.3–3.9배로 눌렸다. SE도 1.7에서 0.6으로 줄었지만 이 0.6은 sandwich SE라서 사후 불확실성은 이보다 크다 (아래). gene2613은 SE 3.75로 정보가 거의 없어 0.35까지 눌렸다. 반면 SE 0.3 대의 고발현 유전자는 6–7%만 줄었다. $|\hat\beta_{MLE}| > 0.5$ 인 유전자만 모아 baseMean 구간별로 본 $|\hat\beta_{shr}|/|\hat\beta_{MLE}|$의 중앙값은 0.270에서 0.941까지 발현이 높을수록 1에 가까웠다. 마지막 열은 문제 18의 답으로 이어진다. gene1349의 Wald stat은 −3.419 인데 shrunk 값으로 다시 나누면 −3.142가 되고, 여기서 p를 만들면 0.00168로 저장된 0.000628과 다르다.
+MLE가 |LFC| 5.5–5.8(44–56배, 교재의 "log2FC 5 = 32배"보다 큰 값)이던 저발현 유전자는 LFC −1.7 ~ −2.0, 즉 약 3.3–3.9배로 눌렸어요. SE도 1.7에서 0.6으로 줄었지만, 이 0.6은 sandwich SE라서 사후 불확실성은 이보다 커요(아래). gene2613은 SE 3.75로 정보가 거의 없어 0.35까지 눌렸고, 반대로 SE 0.3대의 고발현 유전자는 6–7%만 줄었어요. $|\hat\beta_{MLE}| > 0.5$인 유전자만 모아 baseMean 구간별로 본 $|\hat\beta_{shr}|/|\hat\beta_{MLE}|$의 중앙값은 0.270에서 0.941까지, 발현이 높을수록 1에 가까웠어요. 마지막 열은 문제 18의 답으로 이어져요. gene1349의 Wald stat은 −3.419인데 shrunk 값으로 다시 나누면 −3.142가 되고, 여기서 p를 만들면 0.00168로 저장된 0.000628과 달라요.
 
-이어서, normal의 `lfcSE`가 어떤 SE 인지 확인했다. `lfcShrink`가 쓴 prior 분산으로 MAP 적합을 다시 하고, 그 MAP에서의 $W$로 두 공식을 계산했다.
+이어서 normal의 `lfcSE`가 어떤 SE인지 확인해 봤어요. `lfcShrink`가 쓴 prior 분산으로 MAP 적합을 다시 하고, 그 MAP에서의 $W$로 두 공식을 계산했어요.
 
 ```r
 pv  <- priorInfo(shr)$betaPriorVar                 # lfcShrink 가 쓴 prior 분산 (log2 척도)
@@ -1207,12 +1197,12 @@ gene2613 [-1.90, 12.81]  [-0.42, 1.12]      [-1.98, 2.69]
 gene2055   [1.45, 2.68]   [1.36, 2.52]       [1.35, 2.54]
 ```
 
-반환된 `lfcSE`는 sandwich 공식과 소수 4 자리까지 같다. Laplace 근사 posterior SD 와는 다르고 (gene1349 0.63 대 0.94, gene2613 0.39 대 1.19), 고발현 gene2055는 prior 영향이 작아 셋이 비슷하다. 아래 표는 같은 "±1.96 × lfcSE"가 세 가지 다른 구간이 됨을 보여 준다. gene2613의 Wald 구간은 [−1.90, 12.81]로 0을 포함하는데, normal의 MAP ± 1.96·lfcSE는 [−0.42, 1.12]로 좁아서 불확실성을 작게 보인다. 그림에 막대를 그릴 때는 어느 것인지 캡션에 쓴다.
+반환된 `lfcSE`는 sandwich 공식과 소수 넷째 자리까지 같아요. Laplace 근사 posterior SD와는 다르고(gene1349 0.63 대 0.94, gene2613 0.39 대 1.19), 고발현 gene2055는 prior 영향이 작아 셋이 비슷해요. 출력의 두 번째 표는 같은 "±1.96 × lfcSE"가 세 가지 다른 구간이 된다는 걸 보여 줘요. gene2613의 Wald 구간은 [−1.90, 12.81]로 0을 포함하는데, normal의 MAP ± 1.96·lfcSE는 [−0.42, 1.12]로 좁아서 불확실성이 작아 보여요. 그림에 막대를 그릴 때 어느 것인지 캡션에 적어야 하는 이유예요.
 
 </details>
 
 <details>
-<summary>실험 2. 두 shrunken coefficient를 빼면 contrast의 shrinkage가 아니다 (A=Ctrl, B=Starvation, C=Glucose)</summary>
+<summary>실험 2. 두 shrunken coefficient를 빼면 contrast의 shrinkage가 될까? (A=Ctrl, B=Starvation, C=Glucose)</summary>
 
 ```r
 suppressPackageStartupMessages(library(DESeq2)); options(width = 120)
@@ -1271,11 +1261,11 @@ relevel(B) coef path betaPriorVar: 1e+06 0.8 1.089 | max|relevel coef - contrast
 lfcThreshold=1 (normal): stat identical to results()? FALSE | pvalue identical? FALSE
 ```
 
-MLE contrast는 정확히 가법적이다. `getContrast()`는 `fitBeta`를 `maxitSEXP = 0`으로 불러 계수를 다시 적합하지 않고, B와 C가 모두 0인 14개를 빼면 차이는 8.9e-16이다. 0.039는 전부 그 14개에서 나온다. `cleanContrast()`는 비교하는 두 group이 모두 0인 유전자의 LFC를 0, stat을 0, p를 1로 덮어쓰는데 (gene357: counts 0 5 0 0 0 0 0 0 0), 계수 경로의 (C−A)−(B−A)는 −0.039로 남는다.
+MLE contrast는 정확히 가법적이에요. `getContrast()`는 `fitBeta`를 `maxitSEXP = 0`으로 불러 계수를 다시 적합하지 않고, B와 C가 모두 0인 14개를 빼면 차이는 8.9e-16이에요. 0.039는 전부 그 14개에서 나와요. `cleanContrast()`가 비교하는 두 group이 모두 0인 유전자의 LFC를 0, stat을 0, p를 1로 덮어쓰는데(gene357: counts 0 5 0 0 0 0 0 0 0), 계수 경로의 (C−A)−(B−A)는 −0.039로 남기 때문이에요.
 
-shrinkage 쪽. `type="normal"`에서 `coef=B`와 `coef=C` 두 호출은 같은 standard model matrix, 같은 prior 분산 (0.80, 1.695)으로 같은 joint MAP 적합을 하고 거기서 다른 열을 꺼낸다 (각각 joint fit과 차이 0). 그래서 sC − sB는 그 joint posterior mode의 contrast $c^T\hat\beta_{MAP}$ 그 자체이고, 뺄셈이 보존되지 않는 것이 아니다. 최대 0.69의 차이는 prior가 다른 데서 온다. `contrast=` 경로는 expanded model matrix에서 모든 level에 같은 분산 1.195를 두고 다시 적합한다. 저발현 gene158은 sC − sB가 0.66, contrast shrink가 1.35다. B, C가 모두 0인 유전자를 빼도 최대 차는 0.69로 같다. relevel(B) 후의 `coef` 경로는 prior 분산 (0.8, 1.089)이 또 달라서 어느 쪽과도 맞지 않는다 (최대 차 1.24, 1.28). apeglm은 한 번 호출에 `coef` 하나에만 posterior를 다시 추정하므로 (도움말 "re-estimates posterior LFCs for the coefficient specified by coef"), 두 호출은 서로 다른 posterior이고 그 차는 어느 한 posterior의 mode도 아니다 (미설치라 실행하지 않았다). 교재의 결론 "두 shrunken coefficient를 빼는 것은 contrast의 올바른 posterior shrinkage가 아니다"는 맞다. 다만 normal에서 그 이유는 posterior mode의 비선형성이 아니라 prior를 어느 parametrization에 두었느냐다. 어떤 경로를 썼는지 `priorInfo()`로 남긴다.
+shrinkage 쪽은 이래요. `type="normal"`에서 `coef=B`와 `coef=C` 두 호출은 같은 standard model matrix, 같은 prior 분산(0.80, 1.695)으로 같은 joint MAP 적합을 하고, 거기서 다른 열을 꺼낼 뿐이에요(각각 joint fit과 차이 0). 그래서 sC − sB는 그 joint posterior mode의 contrast $c^T\hat\beta_{MAP}$ 그 자체예요. 뺄셈이 깨지는 게 아니라는 거죠. 최대 0.69의 차이는 prior가 달라서 생겨요. `contrast=` 경로는 expanded model matrix에서 모든 level에 같은 분산 1.195를 두고 다시 적합하거든요. 저발현 gene158은 sC − sB가 0.66, contrast shrink가 1.35예요. B, C가 모두 0인 유전자를 빼도 최대 차는 0.69로 같아요. relevel(B) 후의 `coef` 경로는 prior 분산(0.8, 1.089)이 또 달라서 어느 쪽과도 맞지 않아요(최대 차 1.24, 1.28). apeglm은 한 번 호출할 때 `coef` 하나에만 posterior를 다시 추정하니까(도움말 "re-estimates posterior LFCs for the coefficient specified by coef"), 두 호출은 서로 다른 posterior이고 그 차는 어느 한 posterior의 mode도 아니에요(미설치라 실행하지 않았어요). 교재의 결론 "두 shrunken coefficient를 빼는 것은 contrast의 올바른 posterior shrinkage가 아니다"는 맞아요. 다만 normal에서 그 이유는 posterior mode의 비선형성이 아니라 prior를 어느 parametrization에 두었느냐예요. 어떤 경로를 썼는지는 `priorInfo()`로 남겨 두세요.
 
-`lfcThreshold=1`을 `type="normal"`과 함께 주면 `stat`, `pvalue`까지 바뀌었다. 이 경우는 shrink 된 계수에 대한 threshold 검정을 새로 한 것이므로 "pvalue는 항상 MLE 검정"이라는 문장의 예외다.
+`lfcThreshold=1`을 `type="normal"`과 함께 주면 `stat`, `pvalue`까지 바뀌었어요. shrink된 계수로 threshold 검정을 새로 한 것이라, "pvalue는 항상 MLE 검정"이라는 말의 예외예요.
 
 </details>
 
@@ -1379,17 +1369,17 @@ fitting model and testing
   baseMean 976.3 LFC 10.291 pvalue 1.59e-05
 ```
 
-(a) 3 vs 3: Cook's 36.9 > 18이라 p만 NA다. LFC −7.9는 남아 있으므로 "LFC는 있는데 p가 NA"가 Cook's의 서명이다. `cooksCutoff=FALSE`면 p는 0.00177이다.
+(a) 3 vs 3에서는 Cook's 36.9 > 18이라 p만 NA예요. LFC −7.9는 남아 있으니 "LFC는 있는데 p가 NA"가 Cook's의 흔적이에요. `cooksCutoff=FALSE`면 p는 0.00177이에요.
 
-(a2) 2-group 예외: gene1의 400은 A 안에서 튀는 값이라 Cook's 26.85 > 18로 지목되었지만, B의 1000, 1100, 950 세 개가 400보다 커서 `dontFilter`로 남았다 (p 0.0449, `cooksCutoff=FALSE`와 같음). 대조 gene2는 5000보다 큰 count가 없어 필터되었다 (p NA, 필터를 끄면 0.00176).
+(a2)는 2-group 예외예요. gene1의 400은 A 안에서 튀는 값이라 Cook's 26.85 > 18로 지목됐지만, B의 1000, 1100, 950 세 개가 400보다 커서 `dontFilter`로 남았어요(p 0.0449, `cooksCutoff=FALSE`와 같음). 대조로 넣은 gene2는 5000보다 큰 count가 없어 필터됐어요(p NA, 필터를 끄면 0.00176).
 
-(b) 7 vs 7: 5000이 trimmed mean 기반 값 5로 교체되어 재적합되었다. 원래 count는 `counts(dds)`에, 교체본은 `assays(dds)[["replaceCounts"]]`에 있다. `cooks` assay는 교체 전 값 (83.69)을 보여 주지만, 모든 sample이 replaceable이라 `maxCooks`가 NA로 바뀌어 이후 Cook's 필터는 없다.
+(b) 7 vs 7에서는 5000이 trimmed mean 기반 값 5로 교체되어 재적합됐어요. 원래 count는 `counts(dds)`에, 교체본은 `assays(dds)[["replaceCounts"]]`에 있어요. `cooks` assay는 교체 전 값(83.69)을 보여 주지만, 모든 sample이 replaceable이라 `maxCooks`가 NA로 바뀌어서 이후 Cook's 필터는 없어요.
 
-(c) paired: model matrix의 여섯 행이 모두 달라 셀당 1개이고 `maxCooks`는 전부 NA다. 5000이 들어 있어도 아무 처리가 없다. pair 계수가 그 sample의 count를 흡수해 Cook's 자체도 0.23으로 작고, cutoff도 $F_{0.99}(4,2) = 99.25$로 높다.
+(c) paired에서는 model matrix의 여섯 행이 모두 달라 셀당 1개이고, `maxCooks`는 전부 NA예요. 5000이 들어 있어도 아무 처리가 없어요. pair 계수가 그 sample의 count를 흡수해 Cook's 자체도 0.23으로 작고, cutoff도 $F_{0.99}(4,2) = 99.25$로 높아요.
 
-(d) 2 vs 2도 `maxCooks`가 NA다. Cook's 필터 없이 p = 0.00451이 그대로 보고된다.
+(d) 2 vs 2도 `maxCooks`가 NA라서, Cook's 필터 없이 p = 0.00451이 그대로 보고돼요.
 
-(e) 3 vs 2: A 셀 (3개)만 `nOrMoreInCell`이 TRUE다. 5000을 A의 sample에 넣으면 `maxCooks` 36.91 > 30.82로 p가 NA다. B의 sample에 넣으면 B 두 sample의 Cook's (24.7)는 제외되고 `maxCooks`는 A의 최댓값 0.7이 되어 p = 1.59e-05가 보고된다. 이 경우 24.7은 cutoff 30.82보다 작아 포함되었더라도 필터되지 않았을 것이다. 이 실행이 보여 주는 것은 셀이 섞인 설계에서 `maxCooks`가 3개 이상인 셀의 sample로만 계산된다는 점이다.
+(e) 3 vs 2에서는 A 셀(3개)만 `nOrMoreInCell`이 TRUE예요. 5000을 A의 sample에 넣으면 `maxCooks` 36.91 > 30.82로 p가 NA가 돼요. B의 sample에 넣으면 B 두 sample의 Cook's(24.7)는 빠지고 `maxCooks`는 A의 최댓값 0.7이 되어 p = 1.59e-05가 보고돼요. 사실 이 24.7은 cutoff 30.82보다 작아서 포함됐더라도 필터되지 않았을 거예요. 이 실행이 보여 주는 건, 셀이 섞인 설계에서 `maxCooks`가 3개 이상인 셀의 sample로만 계산된다는 점이에요.
 
 </details>
 
@@ -1422,14 +1412,14 @@ filterThreshold: 4.4313 | filterTheta: 0.198 | max baseMean (padj-NA-only): 4.43
 betaConv FALSE: 0 | betaConv NA: 16 | NA rows == allZero rows: TRUE
 ```
 
-세 종류의 NA가 서로 다른 열 패턴을 남긴다. 이 데이터에서는 Cook's outlier가 없었다 (최대 17.54 < 18). convergence는 실패가 없었고 (`betaConv`의 NA 16개는 allZero 유전자다), 소스상 실패해도 NA로 바뀌지 않으므로 `mcols(dds)$betaConv`를 직접 봐야 한다.
+세 종류의 NA가 서로 다른 열 패턴을 남겨요. 이 데이터에서는 Cook's outlier가 없었어요(최대 17.54 < 18). 수렴 실패도 없었는데(`betaConv`의 NA 16개는 allZero 유전자예요), 소스상 실패해도 NA로 바뀌지 않으니 `mcols(dds)$betaConv`를 직접 봐야 해요.
 
 </details>
 
 <details>
-<summary>실험 5. blind=는 batch를 제거하지 않는다</summary>
+<summary>실험 5. blind=는 batch를 지워 줄까?</summary>
 
-균형 설계 (condition × batch 각 2개, m=8)에서 유전자 600개에 batch b2의 2배 효과를 넣고 `design = ~batch + condition`으로 `DESeq()`를 돌린 뒤 변환을 여러 방식으로 구했다.
+균형 설계(condition × batch 각 2개, m=8)에서 유전자 600개에 batch b2의 2배 효과를 넣고, `design = ~batch + condition`으로 `DESeq()`를 돌린 뒤 변환을 여러 방식으로 구했어요.
 
 ```r
 suppressPackageStartupMessages(library(DESeq2))
@@ -1489,18 +1479,18 @@ plotCounts count - normalized count: transform=TRUE 0.5 | transform=FALSE 0
 confounded ~ batch + condition: full model matrix is less than full rank
 ```
 
-`blind=FALSE`로도 PC2가 batch로 ±5.6 갈라진다. `blind`는 dispersion trend를 어느 design으로 추정하느냐만 바꾼다. 교재 예시 함수 `varianceStabilizingTransformation(blind=FALSE)`는 `DESeq()`의 trend를 재사용하고 `vst(blind=FALSE)`는 부분집합으로 trend를 다시 맞추므로 값이 최대 0.289 다르다. 둘 다 PC2가 batch로 갈린다 (±5.6, ±4.9). `rlog(blind=FALSE)`도 PC2가 ±6.0으로 갈렸다. rlog는 VST와 다른 변환이라 값 자체는 크게 다르다 (최대 차 7.17). 이 크기 (2000 × 8)에서 rlog는 0.1 초 남짓 걸려 비용 차이는 드러나지 않았고, sample 수가 많을 때의 속도는 확인하지 않았다.
+`blind=FALSE`로도 PC2가 batch로 ±5.6 갈라져요. `blind`는 dispersion trend를 어느 design으로 추정하느냐만 바꾸거든요. 교재 예시 함수 `varianceStabilizingTransformation(blind=FALSE)`는 `DESeq()`의 trend를 재사용하고, `vst(blind=FALSE)`는 부분집합으로 trend를 다시 맞추므로 값이 최대 0.289 달라요. 둘 다 PC2가 batch로 갈려요(±5.6, ±4.9). `rlog(blind=FALSE)`도 PC2가 ±6.0으로 갈렸어요. rlog는 VST와 다른 변환이라 값 자체는 크게 달라요(최대 차 7.17). 이 크기(2000 × 8)에서 rlog는 0.1초 남짓 걸려 비용 차이가 드러나지 않았고, sample 수가 많을 때의 속도는 확인하지 않았어요.
 
-`removeBatchEffect`를 적용한 사본에서만 PC2의 batch 평균이 0이 되었다. 이 행렬은 그림 전용이다. 정수가 아니므로 검정 입력이 될 수 없고, 그 이전에 raw count의 평균–분산 구조를 잃었다. 검정은 raw count와 `~ batch + condition`으로 한다. batch와 condition을 완전히 겹치게 바꾸면 `DESeq()`는 "full model matrix is less than full rank"로 거부한다. 이런 설계에서는 PCA에서 깨끗하게 갈라져도 condition 효과인지 batch 효과인지 구분할 수 없다.
+`removeBatchEffect`를 적용한 사본에서만 PC2의 batch 평균이 0이 됐어요. 이 행렬은 정수가 아니라 검정 입력이 될 수 없고, 그보다 먼저 raw count의 평균–분산 구조를 잃었으니 그림에만 써요. 검정은 raw count와 `~ batch + condition`으로 해요. batch와 condition을 완전히 겹치게 바꾸면 `DESeq()`는 "full model matrix is less than full rank"로 거부하고, 이런 설계에서는 PCA에서 깨끗하게 갈라져도 condition 효과인지 batch 효과인지 구분할 수 없어요.
 
-`plotCounts(..., returnData=TRUE)`의 `count` 열은 `transform=TRUE` (기본)일 때 normalized count + 0.5, `transform=FALSE`면 normalized count 그대로다 (소스: `pc <- if (transform) 0.5 else 0`). 표에 옮길 때 이 0.5를 기억한다.
+`plotCounts(..., returnData=TRUE)`의 `count` 열은 `transform=TRUE`(기본)일 때 normalized count + 0.5이고, `transform=FALSE`면 normalized count 그대로예요(소스: `pc <- if (transform) 0.5 else 0`). 표에 옮길 때 이 0.5를 잊지 마세요.
 
 </details>
 
 <details>
-<summary>실험 6. s-value는 padj와 다른 양이다 (예시 계산, DESeq2 출력 아님)</summary>
+<summary>실험 6. s-value는 padj와 어떻게 다를까? (예시 계산, DESeq2 출력 아님)</summary>
 
-apeglm/ashr가 없어 실제 s-value는 계산할 수 없다. 대신 실험 1의 `normal` 결과에 posterior를 $N(\hat\beta_{shr}, \mathrm{lfcSE}^2)$로 근사해 lfsr과 s-value의 정의만 재현했다 (실험 1의 세션에 이어서).
+apeglm/ashr가 없어서 실제 s-value는 계산할 수 없어요. 대신 실험 1의 `normal` 결과에서 posterior를 $N(\hat\beta_{shr}, \mathrm{lfcSE}^2)$로 근사해 lfsr과 s-value의 정의만 재현했어요(실험 1의 세션에 이어서).
 
 ```r
 lfsr <- pnorm(-abs(shr$log2FoldChange) / shr$lfcSE)   # 사후분포를 N(LFC_shr, lfcSE^2) 로 근사 (예시)
@@ -1524,72 +1514,60 @@ n(padj<0.05): 313 | n(svalue<0.05): 1479
 Spearman cor(pvalue, svalue): 0.999 | padj<0.05 but svalue>=0.05: 0 | svalue<0.05 but (padj>=0.05 or NA): 1166
 ```
 
-같은 0.05로 잘라도 313 대 1479로 다르다. 하지만 이 예시는 공식을 보여 주는 용도일 뿐, 두 양의 크기 차이에 대한 증거가 아니다. (1) 여기서 쓴 `lfcSE`는 sandwich SE라서 posterior SD보다 작다 (실험 1: gene1349 0.63 대 0.94). 그만큼 lfsr과 s-value가 작게 나와 1479가 부풀려져 있다. (2) 이 근사에서 s-value 순위는 p 순위와 거의 같다 (Spearman 0.999, padj < 0.05 인데 s-value ≥ 0.05인 유전자 0개). 즉 313 대 1479는 순위가 달라서가 아니라 잘라내는 척도가 달라서 생긴 차이다. 의미의 차이는 정의에 있다. s-value는 "s-value가 같거나 작은 목록에서 부호가 틀렸을 확률의 평균"이고, padj는 "이 유전자까지 기각한 목록에서 귀무가설이 참인 것의 기대 비율 (FDR)을 통제하는 최소 수준"이다. 실제 apeglm/ashr의 s-value는 각 방법의 posterior에서 나오므로 위 숫자와 다르다.
+같은 0.05로 잘라도 313 대 1479로 달라요. 하지만 이 예시는 공식을 보여 주는 용도일 뿐, 두 양의 크기 차이에 대한 증거는 아니에요. 우선 여기서 쓴 `lfcSE`는 sandwich SE라서 posterior SD보다 작아요(실험 1: gene1349 0.63 대 0.94). 그만큼 lfsr과 s-value가 작게 나와서 1479가 부풀려져 있어요. 또 이 근사에서 s-value 순위는 p 순위와 거의 같아요(Spearman 0.999, padj < 0.05인데 s-value ≥ 0.05인 유전자 0개). 즉 313 대 1479는 순위가 달라서가 아니라 잘라내는 척도가 달라서 생긴 차이예요. 의미의 차이는 정의에 있어요. s-value는 "s-value가 같거나 작은 목록에서 부호가 틀렸을 확률의 평균"이고, padj는 "이 유전자까지 기각한 목록에서 귀무가설이 참인 것의 기대 비율(FDR)을 통제하는 최소 수준"이에요. 실제 apeglm/ashr의 s-value는 각 방법의 posterior에서 나오니까 위 숫자와 달라요.
 
 </details>
 
 <details>
 <summary>자주 하는 오해와 근거</summary>
 
-| 오해 | 실제 (근거) |
-|---|---|
-| lfcShrink를 하면 p 값도 "보정" 된다 | 기본 호출에서 normal은 `pvalue`, `padj`가 값까지 동일하고 (실험 1), apeglm/ashr는 MLE `pvalue`, `padj`를 그대로 둔 채 `stat`만 뺀다 (소스). 예외는 type 별로 다르다. normal + `lfcThreshold>0`은 stat/pvalue/padj를 shrunken 적합의 threshold 검정으로 교체한다 (실험 2). apeglm은 `svalue=TRUE`나 `lfcThreshold>0`이면 pvalue/padj를 지우고 s-value를 붙인다. ashr는 `svalue=TRUE` (`lfcThreshold=0`)면 pvalue/padj를 지우지만, `lfcThreshold>0`이면 MLE pvalue/padj를 두고 FSOS s-value를 덧붙인다 (소스) |
-| shrunken LFC / lfcSE = Wald Z | 다른 수가 나온다 (−3.142 vs −3.419). normal의 lfcSE는 MAP의 sandwich SE, apeglm/ashr는 posterior SD로, 어느 쪽도 MLE Wald SE가 아니다 |
-| normal의 lfcSE도 posterior SD다 | 도움말은 그렇게 쓰지만 구현값은 sandwich SE이고, 저발현에서 Laplace posterior SD보다 훨씬 작다 (0.63 vs 0.94, 실험 1) |
-| lfcShrink 결과는 모두 MAP | ashr는 `PosteriorMean` (소스), 라벨도 "MMSE" |
-| `coef` 두 개를 shrink 해서 빼면 contrast shrink와 같다 | 최대 0.69, 저발현 gene158에서 0.66 vs 1.35 (실험 2). normal에서는 둘이 같은 joint MAP이라 뺄셈은 맞지만 `contrast` 경로는 prior (expanded MM, 1.195)가 다르다. apeglm은 `contrast` 인자를 아예 거부한다 |
-| MLE도 계수의 차와 contrast가 조금 어긋난다 (재적합 때문) | 재적합은 없고 (`maxit = 0`) 정확히 가법적이다 (8.9e-16). 어긋난 14개는 비교하는 두 group이 모두 0이라 `results(contrast=)`가 LFC 0, p 1로 덮어쓴 유전자다 (실험 2) |
-| Cook's outlier 처리는 언제나 일어난다 | 셀에 3개 이상 있는 sample만 판정에 들어간다. 그런 sample이 없으면 (2 vs 2, 셀당 1개인 paired) `maxCooks`가 전부 NA, 3 vs 2면 3개짜리 group에서만 판정한다. 7개 이상인 셀이 있으면 replacement가 일어나고, 모든 sample이 교체 가능하면 이후 필터가 꺼진다 (실험 3) |
-| 2-group에서는 낮은 쪽 outlier만 봐준다 | 조건은 "지목된 count보다 큰 count가 두 group을 합쳐 3개 이상"이다. 자기 group 안에서 높은 값도 다른 group이 더 크면 남는다 (실험 3-(a2)) |
-| p가 NA면 "발현 없음" | Cook's outlier는 baseMean 783인 유전자였다. NA의 원인은 열 패턴으로 구분한다 (실험 4) |
-| padj가 NA면 "차이 없음" | padj만 NA는 independent filtering으로 검정 가족에서 빠진 것이고, p까지 NA인 Cook's 유전자는 LFC −7.9 였다 (실험 3-(a)). NA를 비발견으로 셀 때는 그 규칙과 원인을 기록한다 |
-| `blind=FALSE`면 batch가 빠진 PCA가 된다 | PC2가 여전히 batch로 갈라진다 (실험 5). design은 dispersion 추정에만 쓰인다 |
-| `vst(blind=FALSE)`는 `DESeq()`의 trend를 그대로 쓴다 | `vst()`는 부분집합으로 trend를 다시 맞춘다. 그대로 쓰는 것은 `varianceStabilizingTransformation(blind=FALSE)`이고 둘은 최대 0.289 다르다 (실험 5) |
-| VST 값을 DESeq2에 넣어 검정한다 | NB GLM은 raw count의 평균–분산 관계와 size factor offset을 모델링하므로 변환값은 입력이 아니다. `DESeqDataSetFromMatrix`가 정수가 아니라고 거부하는 것은 증상이다 |
-| PCA가 잘 갈라지면 design도 문제없다 | 완전히 교락된 batch는 `DESeq()`가 "full model matrix is less than full rank"로 거부한다 (실험 5). 분리 여부는 품질·설계·모델 진단과 함께 본다 |
+- lfcShrink를 하면 p 값도 "보정"될까요? 기본 호출에서는 아니에요. normal은 `pvalue`, `padj`가 값까지 같고(실험 1), apeglm/ashr는 MLE `pvalue`, `padj`를 그대로 둔 채 `stat`만 빼요(소스). 예외는 type마다 달라요. normal + `lfcThreshold>0`은 stat/pvalue/padj를 shrunken 적합의 threshold 검정으로 바꿔요(실험 2). apeglm은 `svalue=TRUE`나 `lfcThreshold>0`이면 pvalue/padj를 지우고 s-value를 붙여요. ashr는 `svalue=TRUE`(`lfcThreshold=0`)면 pvalue/padj를 지우지만, `lfcThreshold>0`이면 MLE pvalue/padj를 두고 FSOS s-value를 덧붙여요(소스).
+- shrunken LFC / lfcSE가 Wald Z일까요? 아니에요. 다른 수가 나와요(−3.142 vs −3.419). normal의 lfcSE는 MAP의 sandwich SE, apeglm/ashr는 posterior SD라서 어느 쪽도 MLE Wald SE가 아니에요.
+- normal의 lfcSE도 posterior SD일까요? 도움말은 그렇게 쓰지만 구현값은 sandwich SE이고, 저발현에서는 Laplace posterior SD보다 훨씬 작아요(0.63 vs 0.94, 실험 1).
+- lfcShrink 결과는 모두 MAP일까요? ashr는 `PosteriorMean`(소스)이고 라벨도 "MMSE"예요.
+- `coef` 두 개를 shrink해서 빼면 contrast shrink와 같을까요? 최대 0.69 차이가 나고, 저발현 gene158에서는 0.66 vs 1.35예요(실험 2). normal에서는 두 호출이 같은 joint MAP이라 뺄셈 자체는 맞지만, `contrast` 경로는 prior(expanded MM, 1.195)가 달라요. apeglm은 `contrast` 인자를 아예 거부하고요.
+- MLE도 재적합 때문에 계수의 차와 contrast가 조금 어긋날까요? 재적합은 없고(`maxit = 0`) 정확히 가법적이에요(8.9e-16). 어긋난 14개는 비교하는 두 group이 모두 0이라 `results(contrast=)`가 LFC 0, p 1로 덮어쓴 유전자예요(실험 2).
+- Cook's outlier 처리는 언제나 일어날까요? 셀에 3개 이상 있는 sample만 판정에 들어가요. 그런 sample이 없으면(2 vs 2, 셀당 1개인 paired) `maxCooks`가 전부 NA이고, 3 vs 2면 3개짜리 group에서만 판정해요. 7개 이상인 셀이 있으면 replacement가 일어나고, 모든 sample이 교체 가능하면 이후 필터가 꺼져요(실험 3).
+- 2-group에서는 낮은 쪽 outlier만 봐줄까요? 조건은 "지목된 count보다 큰 count가 두 group을 합쳐 3개 이상"이에요. 자기 group 안에서 높은 값도 다른 group이 더 크면 남아요(실험 3-(a2)).
+- p가 NA면 "발현 없음"일까요? Cook's outlier는 baseMean 783인 유전자였어요. NA의 원인은 열 패턴으로 구분해요(실험 4).
+- padj가 NA면 "차이 없음"일까요? padj만 NA인 건 independent filtering으로 검정 가족에서 빠진 것이고, p까지 NA인 Cook's 유전자는 LFC −7.9였어요(실험 3-(a)). NA를 비발견으로 셀 때는 그 규칙과 원인을 기록해 두세요.
+- `blind=FALSE`면 batch가 빠진 PCA가 될까요? PC2가 여전히 batch로 갈라져요(실험 5). design은 dispersion 추정에만 쓰여요.
+- `vst(blind=FALSE)`는 `DESeq()`의 trend를 그대로 쓸까요? `vst()`는 부분집합으로 trend를 다시 맞춰요. 그대로 쓰는 건 `varianceStabilizingTransformation(blind=FALSE)`이고, 둘은 최대 0.289 달라요(실험 5).
+- VST 값을 DESeq2에 넣어 검정해도 될까요? NB GLM은 raw count의 평균–분산 관계와 size factor offset을 모델링하니까 변환값은 입력이 될 수 없어요. `DESeqDataSetFromMatrix`가 정수가 아니라고 거부하는 건 증상일 뿐이에요.
+- PCA가 잘 갈라지면 design도 문제없을까요? 완전히 교락된 batch는 `DESeq()`가 "full model matrix is less than full rank"로 거부해요(실험 5). 분리 여부는 품질·설계·모델 진단과 함께 봐야 해요.
 
 </details>
 
 <details>
-<summary>교재와 다른 점 (검증 메모)</summary>
+<summary>교재와 다르게 나온 부분</summary>
+
+교재 설명과 실제 DESeq2 동작이 다르거나, 교재에 없는 세부가 나온 부분만 모았어요. 나머지 교재 설명은 실제 DESeq2 동작과 맞았어요.
 
 | 교재 주장 (13장) | 확인 결과 | 근거 |
 |---|---|---|
 | LFC shrinkage는 `DESeq()` 이후 별도 단계 | 일치 (예외 경로 있음) | `lfcShrink` 15–19행: `resultsNames`가 비면 stop, 단 apeglm + `apeAdapt=FALSE`는 제외. 23–26행: `betaPrior=TRUE`면 무조건 stop |
-| dispersion prior 중심은 trend, LFC prior 중심은 0 | 일치 | 03 노트; `estimateBetaPriorVar`는 0 중심 normal의 분산만 추정 (Intercept 1e+06, 실험 1) |
-| 저발현에서 MLE log2FC 5에 매우 큰 SE | 일치 | 실험 1: LFC −5.81, SE 1.70 (baseMean 4.9); SE 3.75인 경우도 |
 | apeglm = heavy-tailed prior, posterior mode | 일치 (도움말·소스) / prior 형태 세부 미확인 | 도움말 "adaptive Student's t prior", 참고문헌 제목 "Heavy-tailed prior distributions"; `fit$map`, `sub("MLE","MAP")`. Cauchy 인지는 apeglm 미설치로 미확인 |
-| normal = posterior mode | 일치 | `nbinomWaldTest(betaPrior=TRUE)`, 라벨 "log2 fold change (MAP)" (실험 1) |
 | ashr = posterior mean | 일치 (소스) | `fit$result$PosteriorMean`, 라벨 "MMSE"; 실행은 미설치로 불가 |
-| apeglm은 coefficient만 지원 | 일치 (소스) / 실행으로는 미관찰 | `stop("type='apeglm' shrinkage only for use with 'coef'")` (170–171행). 이 환경에서 `contrast` + apeglm을 부르면 167–168행 설치 검사가 먼저 걸려 설치 메시지만 나온다 ("교재 예시 코드를 그대로 불러 보면" 블록) |
-| 두 shrunken coefficient의 차 ≠ contrast의 posterior shrinkage | 일치 (결론) / 이유 보충 | 실험 2: 최대 0.69, gene158 0.66 vs 1.35. normal의 두 coef 호출은 같은 joint MAP (차이 0)이라 뺄셈은 보존되고, 차이는 contrast 경로의 다른 prior (expanded MM 1.195 vs standard 0.80/1.695)에서 온다. apeglm은 호출마다 다른 posterior (미실행) |
+| apeglm은 coefficient만 지원 | 일치 (소스) / 실행으로는 미관찰 | `stop("type='apeglm' shrinkage only for use with 'coef'")` (170–171행). 이 환경에서 `contrast` + apeglm을 부르면 167–168행 설치 검사가 먼저 걸려 설치 메시지만 나옴 ("교재 예시 코드를 그대로 불러 보면" 블록) |
+| 두 shrunken coefficient의 차 ≠ contrast의 posterior shrinkage | 일치 (결론) / 이유 보충 | 실험 2: 최대 0.69, gene158 0.66 vs 1.35. normal의 두 coef 호출은 같은 joint MAP (차이 0)이라 뺄셈은 보존되고, 차이는 contrast 경로의 다른 prior (expanded MM 1.195 vs standard 0.80/1.695)에서 옴. apeglm은 호출마다 다른 posterior (미실행) |
 | Starvation을 reference로 재설정해 재적합하면 coef로 만들 수 있다 | 일치 (단, normal에서는 contrast 경로와 값이 다름) | `relevel` + `nbinomWaldTest` 후 `condition_C_vs_B`가 생김; prior 분산 (0.8, 1.089)이 달라 contrast 경로와 최대 차 1.24 (실험 2) |
 | `lfcShrink()`의 `lfcSE`는 posterior SD | apeglm/ashr 일치 (소스) / normal 불일치 | apeglm `fit$sd`, ashr `PosteriorSD`, 라벨 "posterior SD". normal은 sandwich SE: gene1349 lfcSE 0.6266 = sandwich 0.6266 ≠ Laplace posterior SD 0.9413 (실험 1), 라벨도 "standard error"로 남음. 도움말은 세 type 모두 posterior SD 라 함 |
 | pvalue, padj는 남는다 | 일치 (기본) / type 별 예외 | normal 기본은 값 동일 (실험 1); normal + `lfcThreshold>0`은 교체 (실험 2); apeglm은 `svalue=TRUE` 또는 `lfcThreshold>0`이면 제거; ashr는 `svalue=TRUE` (`lfcThreshold=0`)면 제거, `lfcThreshold>0`이면 유지 (소스) |
 | s-value와 BH padj는 의미가 다르다 | 일치 (개념) | 도움말 "probability of false signs among the tests with equal or smaller s-value"; 실험 6은 정의 재현일 뿐 (순위 상관 0.999) |
-| 명목 95% 구간, posterior interval, padj를 열 이름만 보고 같은 종류로 판단하지 않는다 | 일치 | 실험 1: gene2613에서 Wald [−1.90, 12.81], MAP ± 1.96·lfcSE [−0.42, 1.12], Laplace [−1.98, 2.69]. apeglm posterior interval은 미설치로 미실행 |
-| VST/rlog를 검정 입력으로 쓰지 않는다 | 일치 | 이유는 raw count NB 모델; 증상으로 `DESeqDataSetFromMatrix` 오류 "some values in assay are not integers" (실험 5) |
-| `blind=FALSE`는 design을 dispersion 추정에 쓰는 것이지 batch 제거가 아니다 | 일치 | 소스 `if (blind) design(object) <- ~1`; 실험 5 PC2 batch 분리 ±5.6 (vst), ±4.9 (VST), ±6.0 (rlog) |
 | 예시 코드 `varianceStabilizingTransformation(dds, blind=FALSE)` | 일치 (동작) / 주의 | `DESeq()`의 trend를 재사용. `vst(blind=FALSE)`는 부분집합으로 trend를 다시 맞춰 최대 0.289 다름 (실험 5) |
-| 시각화용으로 batch를 제거해도 DESeq2에는 raw counts와 design을 쓴다 | 일치 | 실험 5: `removeBatchEffect` 사본에서만 PC2 batch 평균 0, 그 행렬은 비정수라 DESeq2 입력 불가 |
-| Cook's 처리는 sample 수·design·옵션에 따라 다르다 | 일치 | `recordMaxCooks` 셀당 ≥3, `minReplicatesForReplace=7`, `cooksCutoff=FALSE`; 실험 3 여섯 경우 |
 | paired design에서 자동 replacement가 항상 일어나지는 않는다 | 일치 (더 강하게: 셀당 1개인 paired는 Cook's 필터 자체가 없음) | 실험 3-(c): `nOrMoreInCell(X,3)` 전부 FALSE, `maxCooks` 전부 NA |
 | NA 표: baseMean=0 → p, padj NA | 일치 (LFC, lfcSE, stat도 NA) | 실험 4 gene189 |
-| NA 표: p NA ← count outlier | 일치 | 실험 3-(a), (e) |
-| NA 표: padj만 NA ← independent filtering | 일치 | 실험 4, 문제 17 |
 | NA 표: convergence 경고 → β convergence, 모델 행렬 확인 | 일치 (확인할 열) / 원인 미확인 | `betaConv` 열 존재 (실험 4, 미수렴 0건). `maxit = 2`로 미수렴을 일부러 만들어도 p는 NA가 아님 ("p까지 NA가 되는 경우" 블록). 교재가 든 원인 (정보 부족·극단 count·design)은 자연 발생 미수렴 사례가 없어 미확인 |
-| NA를 "발현 차이 없음"·"발현 없음"으로 바꾸지 않는다 | 일치 | Cook's NA 유전자는 LFC −7.9, `cooksCutoff=FALSE`면 p 0.00177 (실험 3-(a)) |
-| 부록 B 17: p도 NA면 all-zero, count outlier 또는 fitting 문제 | 부분 일치 | all-zero·Cook's는 실험 3, 4. "fitting 문제"는 둘로 갈린다. weights로 design이 퇴화한 행은 p까지 NA (일치), β 미수렴은 p가 NA가 아님 (불일치). 둘 다 "p까지 NA가 되는 경우" 블록에서 일부러 만들어 실행했고, `results()`에서 p에 NA를 넣는 줄은 Cook's 규칙 하나임을 소스 전체 검색으로 확인 |
+| 부록 B 17: p도 NA면 all-zero, count outlier 또는 fitting 문제 | 부분 일치 | all-zero·Cook's는 실험 3, 4. "fitting 문제"는 둘로 갈림. weights로 design이 퇴화한 행은 p까지 NA (일치), β 미수렴은 p가 NA가 아님 (불일치). 둘 다 "p까지 NA가 되는 경우" 블록에서 일부러 만들어 실행했고, `results()`에서 p에 NA를 넣는 줄은 Cook's 규칙 하나임을 소스 전체 검색으로 확인 |
 | 부록 B 18: shrinkage의 lfcSE는 posterior SD | 부분 불일치 | normal은 sandwich SE (실험 1). 결론 (Z 재계산 금지, ashr = posterior mean)은 일치 |
 | (교재에 없는 세부) 2-group에서 지목된 count보다 큰 count가 3개 이상이면 필터하지 않음 | 확인 (소스 + 실행) | `results` 225–246행 `dontFilter`; 실험 3-(a2): 400 vs 1000·1100·950이면 maxCooks 26.85 > 18 인데 p 0.0449 유지, 대조 gene2는 NA |
 | PCA 분리 여부만으로 DESeq2나 design을 판단하지 않는다 | 일치 (부분 실행) | 실험 5: 균형 설계는 PC1=condition, PC2=batch; 완전 교락은 `DESeq()`가 거부. 교락 데이터의 PCA 자체는 실행하지 않음 |
-| `plotPCA(vsd, intgroup=c("condition","pair"))` 예시 코드 | 일치 (동작) | `intgroup` 여러 개면 `paste(collapse=":")`로 group 생성; 기본 `ntop=500` |
 | 예시 코드의 `type="apeglm"` (`coef="condition_Starvation_vs_Ctrl"`) | 계수 이름은 일치 / 이 환경에서 실행 불가 | "교재 예시 코드를 그대로 불러 보면" 블록 (실행): `resultsNames`에 `condition_Starvation_vs_Ctrl` 있음; `requireNamespace("apeglm")` FALSE이고 호출은 `Error: type='apeglm' requires installing the Bioconductor package 'apeglm'`로 멈춤. `type` 생략 (기본값 apeglm)과 `contrast` 호출도 같은 오류. `type="ashr"`는 `coef`·`contrast` 모두 `Error: type='ashr' requires installing the CRAN package 'ashr'`. `type="normal"`만 실행됨 (500행) |
-| (15.1) apeglm/ashr가 없으면 선택적 shrinkage는 건너뛰고 메시지를 남긴다 | 부분 일치 | 위 같은 블록: normal은 apeglm/ashr 없이 돌고, apeglm/ashr는 위 메시지로 멈춘다. 다만 `lfcShrink()`는 건너뛰지 않고 `stop()` 하므로, "건너뛴다"는 workbook이 `requireNamespace()`로 분기할 때만 성립한다. `DESeq2_workbook.R`은 저장소에 없어 그 분기는 미확인 |
+| (15.1) apeglm/ashr가 없으면 선택적 shrinkage는 건너뛰고 메시지를 남긴다 | 부분 일치 | 위 같은 블록: normal은 apeglm/ashr 없이 돌고, apeglm/ashr는 위 메시지로 멈춤. 다만 `lfcShrink()`는 건너뛰지 않고 `stop()` 하므로, "건너뛴다"는 workbook이 `requireNamespace()`로 분기할 때만 성립. `DESeq2_workbook.R`은 저장소에 없어 그 분기는 미확인 |
 
 </details>
 
-다음 노트 [08](08_one_gene_end_to_end.md)은 유전자 A의 count 여섯 개가 α, SE, Z, p로 바뀌는 계산을 손으로 따라가고, 같은 count를 실제 DESeq2에 넣어 비교한다. 이어서 교재 15장의 세 그룹 paired 실습 코드를 참 효과를 아는 데이터에 돌린다. 이 노트에서 본 Cook's 필터와 refit이 켜지는 조건(design cell 크기)은 그 15장 실습에서 다시 나온다.
+다음 노트 [08](08_one_gene_end_to_end.md)에서는 유전자 A의 count 여섯 개가 α, SE, Z, p로 바뀌는 계산을 손으로 따라가고, 같은 count를 실제 DESeq2에 넣어 비교해요. 이어서 교재 15장의 세 그룹 paired 실습 코드를 참 효과를 아는 데이터에 돌려 봐요. 이 노트에서 본 Cook's 필터와 refit이 켜지는 조건(design cell 크기)이 그 15장 실습에서 다시 나와요.
 
 ---
 

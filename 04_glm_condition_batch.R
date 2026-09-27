@@ -1,12 +1,12 @@
-# 04 · How do the design matrix and IRLS produce the log2 fold change and its standard error?
+# 04 - The negative binomial GLM: design matrix, IRLS and the standard error
 #
-# Reproduces the numbers in notes/04_glm_condition_batch.md (Korean), which
-# explains each step. Run from the repository root:
+# The numbers from notes/04_glm_condition_batch.md, without the explanations
+# (those are in the note, in Korean). Run it from the repo root:
 #
 #     Rscript 04_glm_condition_batch.R
 #
-# The stopifnot() checks compare against the values printed in the note
-# (R 4.5.2, DESeq2 1.50.2).
+# Each stopifnot() checks a result against the value printed in the note.
+# I ran it with R 4.5.2 and DESeq2 1.50.2.
 
 suppressPackageStartupMessages(suppressWarnings(library(DESeq2)))
 section <- function(title) cat("\n==", title, "==\n")
