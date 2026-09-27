@@ -1,0 +1,18 @@
+# Versions pinned to the ones the notes were checked with.
+name: poisson-to-deseq2
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - python=3.13
+  - numpy=2.2
+  - scipy=1.17
+  - matplotlib
+  - jupyterlab
+  - r-base=4.5.2
+  - r-irkernel
+  - r-ggplot2
+  - bioconductor-deseq2=1.50.2
+  - bioconductor-limma
+  - r-mass

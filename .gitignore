@@ -1,0 +1,9 @@
+# Jupyter / R session files
+.ipynb_checkpoints/
+.Rhistory
+.RData
+.Rproj.user/
+*.Rproj
+
+# Local study material, not published
+/DESeq2_*.pdf
