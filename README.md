@@ -2,23 +2,23 @@
 
 DESeq2 is easy to run, but I realized I couldn't really explain what happens between the count matrix and the `padj` column. So I went through it one step at a time: why a Poisson model isn't enough, how the dispersion gets estimated and shrunk, where the standard error comes from, and which genes `padj` is actually adjusted over. For each step I redid the numbers by hand or by simulation and compared them with what DESeq2 gives.
 
-The notes are in Korean. I followed a Korean DESeq2 study text chapter by chapter (the text itself isn't in this repo) and wrote down the places where the text and the package don't agree. Steps 01 to 06 also have a notebook or a script, if you just want to run the numbers.
+I wrote the notes in Korean, following a Korean DESeq2 study text chapter by chapter (the text itself isn't in this repo), and wrote down the places where the text and the package don't agree. English translations are in [notes/en/](notes/en/README.md), and the Korean originals in [notes/](notes/README.md). Steps 01 to 06 also have a notebook or a script, if you just want to run the numbers.
 
 ## Notes and code
 
 | # | Note | What it's about | Code |
 |---|---|---|---|
-| 00 | [Overview](notes/00_overview.md) | What DESeq2 compares, and the steps from counts to padj | |
-| 01 | [Poisson and overdispersion](notes/01_poisson_simulation.md) | Why a Poisson model can't describe the spread between biological replicates | [notebook (Python)](01_poisson_simulation.ipynb) |
-| 02 | [Negative binomial and size factors](notes/02_negative_binomial.md) | What the dispersion α and the size factors each take care of | [notebook (R)](02_negative_binomial.ipynb) |
-| 03 | [Dispersion estimation](notes/03_dispersion_estimation.md) | Estimating α from three replicates: likelihood, Cox-Reid, trend and MAP | [script](03_dispersion_estimation.R) |
-| 04 | [The negative binomial GLM](notes/04_glm_condition_batch.md) | How the design matrix and IRLS give the log2 fold change and its SE | [script](04_glm_condition_batch.R) |
-| 05 | [Wald test and LRT](notes/05_wald_vs_lrt.md) | Why the same fold change can get very different p-values, and what the LRT tests | [script](05_wald_vs_lrt.R) |
-| 06 | [Multiple testing](notes/06_multiple_testing.md) | What padj is adjusted over, and how to test "down under starvation, back up once glucose returns" | [script](06_multiple_testing.R) |
-| 07 | [LFC shrinkage and QC](notes/07_lfc_shrinkage_and_qc.md) | What `lfcShrink()` changes, and where the NAs in a results table come from | |
-| 08 | [One gene, end to end](notes/08_one_gene_end_to_end.md) | Everything above for a single gene, by hand and inside DESeq2 | |
+| 00 | [Overview](notes/en/00_overview.md) | What DESeq2 compares, and the steps from counts to padj | |
+| 01 | [Poisson and overdispersion](notes/en/01_poisson_simulation.md) | Why a Poisson model can't describe the spread between biological replicates | [notebook (Python)](01_poisson_simulation.ipynb) |
+| 02 | [Negative binomial and size factors](notes/en/02_negative_binomial.md) | What the dispersion α and the size factors each take care of | [notebook (R)](02_negative_binomial.ipynb) |
+| 03 | [Dispersion estimation](notes/en/03_dispersion_estimation.md) | Estimating α from three replicates: likelihood, Cox-Reid, trend and MAP | [script](03_dispersion_estimation.R) |
+| 04 | [The negative binomial GLM](notes/en/04_glm_condition_batch.md) | How the design matrix and IRLS give the log2 fold change and its SE | [script](04_glm_condition_batch.R) |
+| 05 | [Wald test and LRT](notes/en/05_wald_vs_lrt.md) | Why the same fold change can get very different p-values, and what the LRT tests | [script](05_wald_vs_lrt.R) |
+| 06 | [Multiple testing](notes/en/06_multiple_testing.md) | What padj is adjusted over, and how to test "down under starvation, back up once glucose returns" | [script](06_multiple_testing.R) |
+| 07 | [LFC shrinkage and QC](notes/en/07_lfc_shrinkage_and_qc.md) | What `lfcShrink()` changes, and where the NAs in a results table come from | |
+| 08 | [One gene, end to end](notes/en/08_one_gene_end_to_end.md) | Everything above for a single gene, by hand and inside DESeq2 | |
 
-The notes do the explaining. The notebooks and scripts only reproduce the main numbers, and they stop with an error if anything comes out different from what the note says. [notes/README.md](notes/README.md) has a short guide to the notes.
+The notes do the explaining. The notebooks and scripts only reproduce the main numbers, and they stop with an error if anything comes out different from what the note says. [notes/en/README.md](notes/en/README.md) has a short guide to the notes (Korean: [notes/README.md](notes/README.md)).
 
 ## One gene, all the way through
 
@@ -75,7 +75,7 @@ Inside a note, the code blocks are meant to be run from top to bottom in one R s
 ├── 04_glm_condition_batch.R
 ├── 05_wald_vs_lrt.R
 ├── 06_multiple_testing.R
-├── notes/     study notes 00–08 (Korean) and their index
+├── notes/     study notes 00–08 in Korean and their index; English translations in notes/en/
 ├── figures/   figures used in the notes
 └── data/      empty for now
 ```
